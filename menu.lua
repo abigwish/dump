@@ -148,31 +148,30 @@ local cursorGui = new("ScreenGui", {
     DisplayOrder = 10000,
     IgnoreGuiInset = true,
 }, rootParent)
-local cursor = new("ImageLabel", {
-    BackgroundTransparency = 1,
-    Size = UDim2.fromOffset(20, 20),
-    Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowCursor.png",
-    ImageColor3 = Color3.fromRGB(255, 255, 255),
-    ZIndex = 10000,
-    Visible = false,
-}, cursorGui)
+local cursor = nil
 do
-    local function updateCursor()
-        local pos = UserInputService:GetMouseLocation()
-        cursor.Position = UDim2.fromOffset(pos.X, pos.Y)
-        -- show custom cursor when menu is visible and mouse is over gui, hide game's custom cursor underneath
-        local shouldShow = main.Visible and isInside(main, pos)
-        -- also show when any popup is open
-        if openPopup then shouldShow = true end
-        -- fallback: always show when menu visible so it's never hidden behind game's cursor
-        if main.Visible then shouldShow = true end
-        cursor.Visible = shouldShow
-        -- force roblox cursor hidden while ours is shown to avoid double
-        pcall(function() UserInputService.MouseIconEnabled = not shouldShow end)
+    local ok, cur = pcall(function()
+        return new("ImageLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(20, 20),
+            Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowCursor.png",
+            ImageColor3 = Color3.fromRGB(255, 255, 255),
+            ZIndex = 10000,
+            Visible = false,
+        }, cursorGui)
+    end)
+    if ok and cur then cursor = cur else
+        pcall(function()
+            local c = Instance.new("ImageLabel")
+            c.BackgroundTransparency = 1
+            c.Size = UDim2.fromOffset(20, 20)
+            c.Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowCursor.png"
+            c.ZIndex = 10000
+            c.Visible = false
+            c.Parent = cursorGui
+            cursor = c
+        end)
     end
-    RunService.RenderStepped:Connect(updateCursor)
-    -- also hide/show on menu toggle
-    main:GetPropertyChangedSignal("Visible"):Connect(updateCursor)
 end
 
 -- popups live here so ScrollingFrames never clip them
@@ -269,6 +268,24 @@ do
 end
 -- divider is parented to MAIN (not the sidebar) so UIListLayout can't eat it
 new("Frame", { Name = "TopLine", Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromOffset(0, 26), BackgroundColor3 = C.Line, BorderSizePixel = 0, ZIndex = 2 }, main)
+
+-- cursor always on top (after main exists)
+do
+    local function updateCursor()
+        if not cursor or not main then return end
+        local okPos, pos = pcall(function() return UserInputService:GetMouseLocation() end)
+        if not okPos or not pos then return end
+        pcall(function() cursor.Position = UDim2.fromOffset(pos.X, pos.Y) end)
+        local shouldShow = false
+        pcall(function() shouldShow = main.Visible and isInside(main, pos) end)
+        if openPopup then shouldShow = true end
+        pcall(function() if main.Visible then shouldShow = true end end)
+        pcall(function() cursor.Visible = shouldShow end)
+        pcall(function() UserInputService.MouseIconEnabled = not shouldShow end)
+    end
+    pcall(function() RunService.RenderStepped:Connect(updateCursor) end)
+    pcall(function() main:GetPropertyChangedSignal("Visible"):Connect(updateCursor) end)
+end
 
 do -- drag
     local dragging, startPos, startInput = false, nil, nil
