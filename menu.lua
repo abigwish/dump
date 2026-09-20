@@ -174,6 +174,16 @@ do
     end
 end
 
+-- modal unlock (linoria style) - unlocks mouse in first person / shift lock
+local modalBtn = new("TextButton", {
+    BackgroundTransparency = 1,
+    Size = UDim2.fromOffset(0, 0),
+    Text = "",
+    Modal = false,
+    Visible = true,
+    ZIndex = 0,
+}, gui)
+
 -- popups live here so ScrollingFrames never clip them
 local popupLayer = new("Frame", {
     Name = "Popups",
@@ -202,6 +212,28 @@ local main = new("Frame", {
 }, gui)
 new("UIStroke", { Color = C.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, main)
 new("UICorner", { CornerRadius = UDim.new(0, 2) }, main)
+
+-- linoria-style modal unlock (first person / shift lock)
+do
+    pcall(function() modalBtn.Modal = main.Visible end)
+    pcall(function()
+        main:GetPropertyChangedSignal("Visible"):Connect(function()
+            pcall(function() modalBtn.Modal = main.Visible end)
+        end)
+    end)
+    -- keep MouseBehavior unlocked while menu is open (game tries to re-lock every frame)
+    pcall(function()
+        RunService.RenderStepped:Connect(function()
+            if main.Visible then
+                pcall(function()
+                    if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+                        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                    end
+                end)
+            end
+        end)
+    end)
+end
 
 local top = new("Frame", {
     Name = "Top",
