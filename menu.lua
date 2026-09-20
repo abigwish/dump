@@ -71,6 +71,8 @@ do
         if old then pcall(function() old:Destroy() end) end
         local oldWm = parent:FindFirstChild(GUI_NAME .. "_Popups")
         if oldWm then pcall(function() oldWm:Destroy() end) end
+        local oldCur = parent:FindFirstChild(GUI_NAME .. "_Cursor")
+        if oldCur then pcall(function() oldCur:Destroy() end) end
     end
     if getgenv then
         pcall(function() getgenv().PlainMenu = nil end)
@@ -133,9 +135,45 @@ end
 local gui = new("ScreenGui", {
     Name = GUI_NAME,
     ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    ZIndexBehavior = Enum.ZIndexBehavior.Global,
+    DisplayOrder = 1000,
     IgnoreGuiInset = true,
 }, rootParent)
+
+-- custom cursor always on top (game has custom cursor that hid menu)
+local cursorGui = new("ScreenGui", {
+    Name = GUI_NAME .. "_Cursor",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Global,
+    DisplayOrder = 10000,
+    IgnoreGuiInset = true,
+}, rootParent)
+local cursor = new("ImageLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.fromOffset(20, 20),
+    Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowCursor.png",
+    ImageColor3 = Color3.fromRGB(255, 255, 255),
+    ZIndex = 10000,
+    Visible = false,
+}, cursorGui)
+do
+    local function updateCursor()
+        local pos = UserInputService:GetMouseLocation()
+        cursor.Position = UDim2.fromOffset(pos.X, pos.Y)
+        -- show custom cursor when menu is visible and mouse is over gui, hide game's custom cursor underneath
+        local shouldShow = main.Visible and isInside(main, pos)
+        -- also show when any popup is open
+        if openPopup then shouldShow = true end
+        -- fallback: always show when menu visible so it's never hidden behind game's cursor
+        if main.Visible then shouldShow = true end
+        cursor.Visible = shouldShow
+        -- force roblox cursor hidden while ours is shown to avoid double
+        pcall(function() UserInputService.MouseIconEnabled = not shouldShow end)
+    end
+    RunService.RenderStepped:Connect(updateCursor)
+    -- also hide/show on menu toggle
+    main:GetPropertyChangedSignal("Visible"):Connect(updateCursor)
+end
 
 -- popups live here so ScrollingFrames never clip them
 local popupLayer = new("Frame", {
@@ -181,7 +219,7 @@ local topLabel = new("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextColor3 = C.Text,
     TextTruncate = Enum.TextTruncate.AtEnd,
-    Text = "press semicolon to hide this menu",
+    Text = "press right shift to hide this menu",
 }, top)
 -- dynamic hide bind (rebindable in settings, persisted via Menu.Flags.MenuHideKey)
 local function keyDisplayLower(k)
@@ -206,7 +244,7 @@ local function keyDisplayLower(k)
     if ok and n then return string.lower(n) end
     return "semicolon"
 end
-Menu.HideKey = Enum.KeyCode.Semicolon
+Menu.HideKey = Enum.KeyCode.RightShift
 local function updateTopText(k)
     Menu.HideKey = k
     Menu.Flags.MenuHideKey = k
@@ -384,11 +422,24 @@ function Menu.CreateTab(name)
 
     -- section = header + rows container. Parent must be a scroll column.
     function tab.CreateSection(column, title)
+        -- separator between sections in same column
+        local colCount = column:GetAttribute("SecCount") or 0
+        if colCount > 0 then
+            local sep = new("Frame", {
+                Size = UDim2.new(1, 0, 0, 1),
+                BackgroundColor3 = C.Line,
+                BorderSizePixel = 0,
+                LayoutOrder = colCount * 2 - 1,
+            }, column)
+            sep:SetAttribute("IsSeparator", true)
+        end
         local holder = new("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 26),
             AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = colCount * 2,
         }, column)
+        column:SetAttribute("SecCount", colCount + 1)
         local l = new("UIListLayout", {
             FillDirection = Enum.FillDirection.Vertical,
             Padding = UDim.new(0, 2),
@@ -1187,7 +1238,7 @@ function Menu.CreateTab(name)
                     new("UIStroke", { Color = C.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pop)
                     new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, pop)
                     new("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingBottom = UDim.new(0, 2) }, pop)
-                    local actions = { "Copy", "Paste", "Paste hex", "Reset" }
+                    local actions = { "copy", "paste", "paste hex", "reset" }
                     for ai, aname in ipairs(actions) do
                         local ob = new("TextButton", {
                             Size = UDim2.new(1, 0, 0, 20),
@@ -1204,15 +1255,15 @@ function Menu.CreateTab(name)
                         }, pop)
                         ob.MouseButton1Click:Connect(function()
                             local cb = idx -- capture for closure safety
-                            if aname == "Copy" then
+                            if aname == "copy" then
                                 Menu.ColorClipboard = curs[cb]
                                 local s = colorToString(curs[cb])
                                 local hx = string.format("#%02X%02X%02X", math.floor(curs[cb].R * 255), math.floor(curs[cb].G * 255), math.floor(curs[cb].B * 255))
                                 pcall(function() setclipboard(s) end)
                                 -- also stash hex so paste hex can fallback
                                 Menu.ColorClipboardHex = hx
-                                Menu.Notify({ Message = "Copied " .. s .. " (" .. hx .. ")", Delay = 1.5 })
-                            elseif aname == "Paste" then
+                                Menu.Notify({ Message = "copied " .. string.lower(s) .. " (" .. string.lower(hx) .. ")", Delay = 1.5 })
+                            elseif aname == "paste" then
                                 local col = Menu.ColorClipboard
                                 if typeof(col) ~= "Color3" then
                                     local clip
@@ -1227,9 +1278,9 @@ function Menu.CreateTab(name)
                                     setBox(cb, col)
                                     Menu.Notify({ Message = "Pasted " .. colorToString(col), Delay = 1.5 })
                                 else
-                                    Menu.Notify({ Message = "Clipboard has no color", Delay = 2 })
+                                    Menu.Notify({ Message = "clipboard has no color", Delay = 2 })
                                 end
-                            elseif aname == "Paste hex" then
+                            elseif aname == "paste hex" then
                                 local clip
                                 pcall(function() clip = getclipboard and getclipboard() or "" end)
                                 clip = tostring(clip or "")
@@ -1243,13 +1294,13 @@ function Menu.CreateTab(name)
                                 end
                                 if typeof(col) == "Color3" then
                                     setBox(cb, col)
-                                    Menu.Notify({ Message = "Pasted hex " .. string.format("#%02X%02X%02X", math.floor(col.R*255), math.floor(col.G*255), math.floor(col.B*255)), Delay = 1.5 })
+                                    Menu.Notify({ Message = "pasted hex " .. string.lower(string.format("#%02X%02X%02X", math.floor(col.R*255), math.floor(col.G*255), math.floor(col.B*255))), Delay = 1.5 })
                                 else
-                                    Menu.Notify({ Message = "No hex in clipboard", Delay = 2 })
+                                    Menu.Notify({ Message = "no hex in clipboard", Delay = 2 })
                                 end
-                            else -- Reset
+                            else -- reset
                                 setBox(cb, defaults[cb] or Color3.fromRGB(255, 255, 255))
-                                Menu.Notify({ Message = "Reset", Delay = 1.2 })
+                                Menu.Notify({ Message = "reset", Delay = 1.2 })
                             end
                             closePopup()
                         end)
@@ -1276,31 +1327,31 @@ function Menu.CreateTab(name)
             local flag = opt.Flag or (opt.Name .. "_Key")
             local key = opt.DefaultKey or Enum.KeyCode.E
             local mode = opt.Mode or "Hold key"
-            if mode == "Hold" then mode = "Hold key" end
-            if mode == "Always" then mode = "Always on" end
+            if string.lower(mode) == "hold" then mode = "hold key" end
+            if string.lower(mode) == "always" then mode = "always on" end
             local linked = opt.LinkedFlag -- string flag name of a toggle, optional
             local held, toggled = false, false
-            -- short display names: LALT / RSHIFT / M1 / M2 ...
+            -- short display names: lower caps per request (lalt / right shift / m1 ...)
             local SHORT = {
-                [Enum.KeyCode.LeftAlt] = "LALT",
-                [Enum.KeyCode.RightAlt] = "RALT",
-                [Enum.KeyCode.LeftShift] = "LSHIFT",
-                [Enum.KeyCode.RightShift] = "RSHIFT",
-                [Enum.KeyCode.LeftControl] = "LCTRL",
-                [Enum.KeyCode.RightControl] = "RCTRL",
+                [Enum.KeyCode.LeftAlt] = "left alt",
+                [Enum.KeyCode.RightAlt] = "right alt",
+                [Enum.KeyCode.LeftShift] = "left shift",
+                [Enum.KeyCode.RightShift] = "right shift",
+                [Enum.KeyCode.LeftControl] = "left ctrl",
+                [Enum.KeyCode.RightControl] = "right ctrl",
             }
             local MOUSE_SHORT = {
-                [Enum.UserInputType.MouseButton1] = "M1",
-                [Enum.UserInputType.MouseButton2] = "M2",
-                [Enum.UserInputType.MouseButton3] = "M3",
+                [Enum.UserInputType.MouseButton1] = "m1",
+                [Enum.UserInputType.MouseButton2] = "m2",
+                [Enum.UserInputType.MouseButton3] = "m3",
             }
             local function shortName(k)
-                if k == nil then return "None" end
+                if k == nil then return "none" end
                 if SHORT[k] then return SHORT[k] end
                 if MOUSE_SHORT[k] then return MOUSE_SHORT[k] end
                 local ok, name = pcall(function() return k.Name end)
-                if ok then return name end
-                return "None"
+                if ok then return string.lower(name) end
+                return "none"
             end
             local function keyMatches(input, k)
                 if k == nil then return false end
@@ -1333,8 +1384,8 @@ function Menu.CreateTab(name)
             end
             local function currentActive()
                 if not linkedOn() then return false end
-                if mode == "Always on" then return true end
-                if mode == "Hold key" then return held end
+                if string.lower(mode) == "always on" then return true end
+                if string.lower(mode) == "hold key" then return held end
                 return toggled
             end
             local function push()
@@ -1361,7 +1412,7 @@ function Menu.CreateTab(name)
                 keyBtn.Text = "[...]"
             end)
             -- right-click opens the mode menu
-            local MODES = { "Always on", "Toggle", "Hold key" }
+            local MODES = { "always on", "toggle", "hold key" }
             local function setMode(m)
                 mode = m
                 held, toggled = false, false
@@ -1429,14 +1480,14 @@ function Menu.CreateTab(name)
                 end
                 if gpe then return end
                 if keyMatches(input, key) then
-                    if mode == "Hold key" then held = true push()
-                    elseif mode == "Toggle" then toggled = not toggled push() end
-                    -- "Always on" ignores the key, it follows the linked toggle
+                    if string.lower(mode) == "hold key" then held = true push()
+                    elseif string.lower(mode) == "toggle" then toggled = not toggled push() end
+                    -- "always on" ignores the key, it follows the linked toggle
                 end
             end)
             UserInputService.InputEnded:Connect(function(input)
                 if keyMatches(input, key) then
-                    if mode == "Hold key" and held then held = false push() end
+                    if string.lower(mode) == "hold key" and held then held = false push() end
                 end
             end)
             -- if the linked toggle turns off, force inactive + refresh list
@@ -1789,6 +1840,7 @@ local function repaintMenu()
             end
             if d:GetAttribute("IsWatermarkStroke") then d.Color = C.Line end
             if d:GetAttribute("IsBindStroke") then d.Color = C.Line end
+            if d:GetAttribute("IsSeparator") then d.BackgroundColor3 = C.Line end
         end
     end)
 end
