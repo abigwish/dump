@@ -1,5 +1,5 @@
 {
-  "!image_color": [139, 78, 43],
+  "!image_color":[89,89,89]",
   "!error_color": [39, 60, 96],
   "!accent_color": [154, 213, 222],
   "!build_color": [154, 213, 222],
@@ -14,6 +14,6 @@
   "!shadow_color": [154, 213, 222],
   "!active_text_color": [197, 197, 197],
   "!alert_color": [30, 51, 61],
-  "!logo_color": [154, 213, 222],
+  "!logo_color": [139, 78, 43],
   "!section_color": [6, 6, 6]
 }
