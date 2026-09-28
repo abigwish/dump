@@ -2046,18 +2046,22 @@ do
 			end
 		end)
 
+		-- a broken cloneref leaves http_service without JSONEncode, and losing the
+		-- data.dat write is never worth killing the menu over
 		if menu["saved"] then
 			menu["saved"] = false
-			writefile(
-				file_path .. "/data.dat",
-				http_service:JSONEncode({
-					["notifications"] = do_notifications,
-					["favorites"] = menu["favorites"],
-					["theme"] = menu["theme"],
-					["hide_on_load"] = menu["hide_on_load"],
-					["autoload"] = menu["autoload"],
-				})
-			)
+			pcall(function()
+				writefile(
+					file_path .. "/data.dat",
+					http_service:JSONEncode({
+						["notifications"] = do_notifications,
+						["favorites"] = menu["favorites"],
+						["theme"] = menu["theme"],
+						["hide_on_load"] = menu["hide_on_load"],
+						["autoload"] = menu["autoload"],
+					})
+				)
+			end)
 		end
 	end
 
