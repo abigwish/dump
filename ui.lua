@@ -792,6 +792,8 @@ do
 		["context"] = nil,
 		["panel"] = nil,
 		["tab"] = nil,
+		-- true only while the menu itself has hidden the engine cursor
+		["cursor_owned"] = nil,
 		["colorpicker_saturation"] = 0,
 		["colorpicker_hue"] = 0,
 		["colorpicker_value"] = 0,
@@ -802,32 +804,13 @@ do
 	-- this menu draws its own cursor, so the engine one gets switched off while
 	-- it is open. rivals is a first person game, so a stuck MouseIconEnabled =
 	-- false is not cosmetic, it is an unplayable game with no way to look around.
-	-- every write goes through here and nothing is allowed to throw.
 	--
-	-- cursor_owned_by_menu records that WE hid the icon, so the watchdog can undo
-	-- our own damage without fighting the game. rivals hides the icon itself on
-	-- first person, and a watchdog that forced it visible every frame would
-	-- override the game's lock and leave a stray cursor stuck mid screen.
-	local cursor_owned_by_menu = false
-
-	local function set_mouse_icon(visible)
-		local ok = pcall(function()
-			user_input_service["MouseIconEnabled"] = visible
-		end)
-
-		if ok then
-			cursor_owned_by_menu = not visible
-		end
-	end
-
-	-- belt and braces. if anything in pop_menu dies between flipping menu_open
-	-- and restoring the icon, this puts it back on the next frame. only ever
-	-- undoes the hide we caused ourselves.
-	local function force_mouse_visible()
-		if not menu_open and cursor_owned_by_menu then
-			set_mouse_icon(true)
-		end
-	end
+	-- note this chunk sits right on the 200 local register ceiling, so the cursor
+	-- state lives in actives instead of new locals. actives["cursor_owned"]
+	-- records that WE hid the icon, which lets the watchdog undo our own damage
+	-- without fighting the game: rivals hides the icon itself on first person, and
+	-- a watchdog that forced it visible every frame would override the game's lock
+	-- and leave a stray cursor pinned mid screen.
 
 	-- > ( drawing proxy )
 
@@ -4017,7 +4000,11 @@ do
 		local mouse_position_y = mouse_position["Y"]
 
 		cursor["Position"] = udim2_new(0, mouse_position["X"], 0, mouse_position["Y"])
-		set_mouse_icon(false)
+		actives["cursor_owned"] = true
+
+		pcall(function()
+			user_input_service["MouseIconEnabled"] = false
+		end)
 
 		local connections = searching and hover_connections[search_out]
 			or actives["colorpicker"] and hover_connections[colorpicker_border]
@@ -4263,7 +4250,11 @@ do
 		-- this point can throw, and a throw used to leave the player with no
 		-- mouse at all in a first person game.
 		menu_open = not menu_open
-		set_mouse_icon(not menu_open)
+		actives["cursor_owned"] = menu_open
+
+		pcall(function()
+			user_input_service["MouseIconEnabled"] = not menu_open
+		end)
 
 		if moving then
 			moving:Disconnect()
@@ -9019,7 +9010,11 @@ do
 
 			-- unloading while open would otherwise leave no mouse icon behind
 			menu_open = false
-			set_mouse_icon(true)
+			actives["cursor_owned"] = nil
+
+			pcall(function()
+				user_input_service["MouseIconEnabled"] = true
+			end)
 
 			env["getrawmetatable"] = env["_OG"]
 
@@ -9038,10 +9033,16 @@ do
 		create_connection(
 			run_service["Heartbeat"],
 			LPH_NO_VIRTUALIZE(function(dt)
-				-- mouse watchdog. cheap no-op unless something left the engine
-				-- cursor off while the menu is shut, which locks a first person
-				-- game out completely.
-				force_mouse_visible()
+				-- mouse watchdog. only ever undoes a hide this menu caused, and
+				-- only while the menu is shut. a no-op otherwise, so it costs one
+				-- table lookup per frame.
+				if not menu_open and actives["cursor_owned"] then
+					actives["cursor_owned"] = nil
+
+					pcall(function()
+						user_input_service["MouseIconEnabled"] = true
+					end)
+				end
 
 				for i = 1, #heartbeat do
 					spawn(heartbeat[i], dt)
