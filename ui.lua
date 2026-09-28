@@ -663,8 +663,8 @@ do
             return nil
         end
         local function try_cache(path, tag)
-            local content = readfile(path)
-            if type(content) == "string" and #content > 0 then
+            local ok, content = pcall(readfile, path)
+            if ok and type(content) == "string" and #content > 0 then
                 return try_load(content, tag)
             end
             return nil
@@ -4385,8 +4385,9 @@ do
 			end
 		end
 
-		-- a bad service reference must not take the menu toggle down with it
-		local can_bind = type(context_action_service) == "table"
+		-- a bad service reference must not take the menu toggle down with it.
+		-- note: a service is an Instance, type() gives "Instance" not "table".
+		local can_bind = context_action_service ~= nil
 			and typeof(context_action_service.BindAction) == "function"
 			and typeof(context_action_service.UnbindAction) == "function"
 
