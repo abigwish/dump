@@ -808,6 +808,19 @@ do
 		-- lives in actives rather than a local like everything else here: this
 		-- chunk is already out of registers.
 		["original_mouse_behavior"] = nil,
+		-- executor capabilities. anything that cannot work is not built at all
+		-- rather than built and broken, so the menu never shows a dead control.
+		-- probes the real global, not the shim, since the shim always exists.
+		["cap_fs"] = type(getfenv and rawget(_G, "readfile")) == "function"
+			and type(rawget(_G, "writefile")) == "function"
+			and type(rawget(_G, "isfile")) == "function",
+		["cap_listfiles"] = type(rawget(_G, "listfiles")) == "function",
+		["cap_delfile"] = type(rawget(_G, "delfile")) == "function",
+		-- config save/load xors with bit32, so without it the .cfg files are
+		-- unreadable garbage. treat it as part of the config requirement.
+		["cap_configs"] = type(rawget(_G, "bit32")) == "table"
+			and type(rawget(_G, "bit32")["bxor"]) == "function",
+		["cap_clipboard"] = type(rawget(_G, "getclipboard")) == "function",
 		["colorpicker_saturation"] = 0,
 		["colorpicker_hue"] = 0,
 		["colorpicker_value"] = 0,
@@ -8611,6 +8624,10 @@ do
 				end
 			)
 
+			-- every element below reads or writes a file under themes/. without real
+			-- fs the dropdown is always empty and save does nothing, so skip the
+			-- lot rather than show four dead controls.
+			if actives["cap_fs"] and actives["cap_listfiles"] then
 			theme_section:create_element({
 				["name"] = "themes",
 				["section"] = 2,
@@ -8704,6 +8721,7 @@ do
 					end
 				end
 			)
+			end
 
 			create_click_connection(frame, themes_image, function()
 				if actives["settings"] == theme_section then
@@ -8751,6 +8769,12 @@ do
 		-- >> ( configs )
 
 		function menu:setup_configs(section_name)
+			-- save/load needs real fs plus bit32 for the xor. without them the tab
+			-- is dead weight, so never create it.
+			if not (actives["cap_fs"] and actives["cap_listfiles"] and actives["cap_delfile"] and actives["cap_configs"]) then
+				return
+			end
+
 			local config_list, config_info, config_editor = nil, nil, nil
 			if type(section_name) == "string" then
 				local config_tab = menu.create_group(section_name)
