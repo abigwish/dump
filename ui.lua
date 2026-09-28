@@ -66,28 +66,9 @@ local IS_LOWEND = (function()
 	if typeof(getcustomasset) ~= "function" then return true end
 	return false
 end)()
--- solara's cloneref hands back the first call's result for every later call, so
--- every service after the first resolves to UserInputService. that is why
--- ContextActionService had no BindAction. self-test the raw global, fall back
--- to identity when it is broken.
 local cloneref = (function()
 	local orig = cloneref
 	if type(orig) ~= "function" then return function(v) return v end end
-
-	local ok_test = false
-	if typeof(game) == "table" and typeof(game.GetService) == "function" then
-		local ok_one, one = pcall(orig, game, "ContextActionService")
-		local ok_two, two = pcall(orig, game, "Players")
-		ok_test = ok_one and ok_two and one ~= nil and two ~= nil and one ~= two
-			and typeof(one) == "Instance" and typeof(two) == "Instance"
-			and one.ClassName == "ContextActionService" and two.ClassName == "Players"
-	end
-
-	if not ok_test then
-		warn("[simon.rent] cloneref unreliable on this executor, using direct references")
-		return function(v) return v end
-	end
-
 	return function(v)
 		local ok, r = pcall(orig, v)
 		if ok and r ~= nil then return r end
@@ -663,8 +644,8 @@ do
             return nil
         end
         local function try_cache(path, tag)
-            local ok, content = pcall(readfile, path)
-            if ok and type(content) == "string" and #content > 0 then
+            local content = readfile(path)
+            if type(content) == "string" and #content > 0 then
                 return try_load(content, tag)
             end
             return nil
@@ -2046,22 +2027,18 @@ do
 			end
 		end)
 
-		-- a broken cloneref leaves http_service without JSONEncode, and losing the
-		-- data.dat write is never worth killing the menu over
 		if menu["saved"] then
 			menu["saved"] = false
-			pcall(function()
-				writefile(
-					file_path .. "/data.dat",
-					http_service:JSONEncode({
-						["notifications"] = do_notifications,
-						["favorites"] = menu["favorites"],
-						["theme"] = menu["theme"],
-						["hide_on_load"] = menu["hide_on_load"],
-						["autoload"] = menu["autoload"],
-					})
-				)
-			end)
+			writefile(
+				file_path .. "/data.dat",
+				http_service:JSONEncode({
+					["notifications"] = do_notifications,
+					["favorites"] = menu["favorites"],
+					["theme"] = menu["theme"],
+					["hide_on_load"] = menu["hide_on_load"],
+					["autoload"] = menu["autoload"],
+				})
+			)
 		end
 	end
 
@@ -4385,45 +4362,26 @@ do
 			end
 		end
 
-		-- a bad service reference must not take the menu toggle down with it.
-		-- note: a service is an Instance, type() gives "Instance" not "table".
-		local can_bind = context_action_service ~= nil
-			and typeof(context_action_service.BindAction) == "function"
-			and typeof(context_action_service.UnbindAction) == "function"
-
-		if can_bind then
-			pcall(function()
-				context_action_service:BindAction(
-					context_action.click,
-					handle_click,
-					false,
-					Enum["UserInputType"]["MouseButton1"],
-					Enum["UserInputType"]["Touch"]
-				)
-			end)
-
-			pcall(function()
-				context_action_service:BindAction(
-					context_action.scroll,
-					handle_scroll,
-					false,
-					Enum["UserInputType"]["MouseWheel"]
-				)
-			end)
-		else
-			warn("[simon.rent] ContextActionService unusable, mouse input disabled")
-		end
+		context_action_service:BindAction(
+			context_action.click,
+			handle_click,
+			false,
+			Enum["UserInputType"]["MouseButton1"],
+			Enum["UserInputType"]["Touch"]
+		)
+		context_action_service:BindAction(
+			context_action.scroll,
+			handle_scroll,
+			false,
+			Enum["UserInputType"]["MouseWheel"]
+		)
 
 		local old_tick = clock()
 		menu_tick = old_tick
 
 		if not menu_open then
-			if can_bind then
-				pcall(function()
-					context_action_service:UnbindAction(context_action.click)
-					context_action_service:UnbindAction(context_action.scroll)
-				end)
-			end
+			context_action_service:UnbindAction(context_action.click)
+			context_action_service:UnbindAction(context_action.scroll)
 
 			delay(0.17, function()
 				if old_tick == menu_tick then
