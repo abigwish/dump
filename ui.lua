@@ -9057,26 +9057,23 @@ do
 		end)
 
 		if s and data then
-			local notifications = data["notifications"]
-			local autoload_config = data["autoload"]
-			local favorites = data["favorites"]
-			local theme = data["theme"]
-			local hide_on_load = data["hide_on_load"]
-
-			menu["hide_on_load"] = hide_on_load
+			-- these five used to be locals held live at the same time, which is
+			-- exactly where the compiler ran out of registers on this chunk.
+			-- reading them off data instead frees five slots at that point.
+			menu["hide_on_load"] = data["hide_on_load"]
 
 			pop_menu(true)
 
-			if not hide_on_load then
+			if not data["hide_on_load"] then
 				pop_menu()
 			end
 
-			menu["theme"] = theme or ""
-			menu["favorites"] = favorites or {}
-			menu["autoload"] = autoload_config or nil
-			do_notifications = notifications or notifications == nil or false
+			menu["theme"] = data["theme"] or ""
+			menu["favorites"] = data["favorites"] or {}
+			menu["autoload"] = data["autoload"] or nil
+			do_notifications = data["notifications"] or data["notifications"] == nil or false
 			menu_references["notifications"]:set_toggle(do_notifications)
-			menu_references["hide_on_load"]:set_toggle(hide_on_load)
+			menu_references["hide_on_load"]:set_toggle(data["hide_on_load"])
 
 			if type(data["menu_key"]) == "string" and data["menu_key"] ~= "" then
 				if Enum["KeyCode"][data["menu_key"]] then
@@ -9086,14 +9083,14 @@ do
 				end
 			end
 
-			if theme and theme ~= "" then
-				menu:load_theme(theme)
+			if data["theme"] and data["theme"] ~= "" then
+				menu:load_theme(data["theme"])
 			elseif isfile(file_path .. "/themes/default.th") then
 				menu:load_theme("default", true)
 			end
 
-			if autoload_config then
-				menu_references["config_list"]:add_icon(autoload_config, autoload)
+			if data["autoload"] then
+				menu_references["config_list"]:add_icon(data["autoload"], autoload)
 			end
 		else
 			writefile(
