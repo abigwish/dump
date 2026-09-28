@@ -430,15 +430,17 @@ do
 			if property == "Color" or property == "Color3" or property == "FillColor" or property == "OutlineColor" then
 				tween_functions[property] = function()
 					local t = ((clock() - start_time) / tween_duration)
-					object[property] = color3_lerp(
-						old_value,
-						value,
-						easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t))
-							or easing_style == quad and t ^ 2
-							or sqrt(1 - (t - 1) ^ 2)
-					) or easing_style == "sine" and t < 0.5 and 0.5 * math.sin(clamp(t, 0, 1) * 355 / 113) or 0.5 + 0.5 * (1 - math.cos(
-						(clamp(t, 0, 1) - 0.5) * 355 / 113
-					))
+					pcall(function()
+						object[property] = color3_lerp(
+							old_value,
+							value,
+							easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t))
+								or easing_style == quad and t ^ 2
+								or sqrt(1 - (t - 1) ^ 2)
+						) or easing_style == "sine" and t < 0.5 and 0.5 * math.sin(clamp(t, 0, 1) * 355 / 113) or 0.5 + 0.5 * (1 - math.cos(
+							(clamp(t, 0, 1) - 0.5) * 355 / 113
+						))
+					end)
 				end
 			elseif property == "tween_position" or property == "tween_size" then
 				tween_functions[property] = function()
@@ -455,17 +457,24 @@ do
 						new["Y"]["Offset"] * tween_value
 					)
 
-					object[property] = old_value + new
+					-- pcall because these land on a real instance. roblox refuses
+					-- property writes from a thread without Plugin capability, and it
+					-- throws straight up out of the tween with no context.
+					pcall(function()
+						object[property] = old_value + new
+					end)
 				end
 			else
 				tween_functions[property] = function()
 					local t = ((clock() - start_time) / tween_duration)
 
-					object[property] = old_value
-						+ (value - old_value)
-							* (easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t)) or easing_style == quad and t ^ 2 or sqrt(
-								1 - (t - 1) ^ 2
-							))
+					pcall(function()
+						object[property] = old_value
+							+ (value - old_value)
+								* (easing_style == exponential and (t == 1 and 1 or 1 - 2 ^ (-10 * t)) or easing_style == quad and t ^ 2 or sqrt(
+									1 - (t - 1) ^ 2
+								))
+					end)
 				end
 			end
 		end
@@ -481,7 +490,10 @@ do
 					if heartbeat[i] == tween then
 						remove(heartbeat, i)
 
-						object[property] = properties[property]
+						pcall(function()
+							object[property] = properties[property]
+						end)
+
 						break
 					end
 				end
@@ -999,7 +1011,12 @@ do
 				self["size"] = value
 				update_proxy_size(self, value)
 			else
-				self["object"][property] = value
+				-- same instance write problem as the tweens. this is the fallback
+				-- every unhandled property lands on, so a single refused write here
+				-- used to abort whatever set it.
+				pcall(function()
+					self["object"][property] = value
+				end)
 			end
 		end
 
