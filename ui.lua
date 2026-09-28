@@ -792,10 +792,10 @@ do
 		["context"] = nil,
 		["panel"] = nil,
 		["tab"] = nil,
-		-- true only while the menu itself has hidden the engine cursor
-		["cursor_owned"] = nil,
-		-- the value the game had before we touched it, restored on close
-		["saved_mouse_icon"] = nil,
+		-- what MouseBehavior was while the menu was shut, restored on close.
+		-- lives in actives rather than a local like everything else here: this
+		-- chunk is already out of registers.
+		["original_mouse_behavior"] = nil,
 		["colorpicker_saturation"] = 0,
 		["colorpicker_hue"] = 0,
 		["colorpicker_value"] = 0,
@@ -803,16 +803,18 @@ do
 
 	-- > ( mouse safety )
 
-	-- this menu draws its own cursor, so the engine one gets switched off while
-	-- it is open. rivals is a first person game, so a stuck MouseIconEnabled =
-	-- false is not cosmetic, it is an unplayable game with no way to look around.
+	-- this menu draws its own cursor, so the engine one goes off while it is open
+	-- and MouseBehavior goes to Default. rivals is first person and locks the
+	-- mouse to the centre of the screen, which pins our own cursor too since it
+	-- tracks GetMouseLocation. either one left stuck is an unplayable game.
 	--
-	-- note this chunk sits right on the 200 local register ceiling, so the cursor
-	-- state lives in actives instead of new locals. actives["cursor_owned"]
-	-- records that WE hid the icon, which lets the watchdog undo our own damage
-	-- without fighting the game: rivals hides the icon itself on first person, and
-	-- a watchdog that forced it visible every frame would override the game's lock
-	-- and leave a stray cursor pinned mid screen.
+	-- two writers, both needed. pop_menu does the immediate write on toggle, and
+	-- the render step at RenderPriority.Last re-asserts every frame because
+	-- rivals re-locks from its own camera update, which runs earlier in the frame.
+	-- anything written during Heartbeat just gets stomped.
+	--
+	-- note this chunk sits on the 200 local register ceiling, so the saved value
+	-- lives in actives instead of a new local.
 
 	-- > ( drawing proxy )
 
@@ -4249,12 +4251,28 @@ do
 		-- there is exactly one writer and it always wins the frame.
 		menu_open = not menu_open
 
-		-- the heartbeat loop below owns this every frame, but it only runs
-		-- while that connection is alive. write it here too so closing can never
-		-- strand the player without a mouse, whichever order things run in.
-		pcall(function()
-			user_input_service["MouseIconEnabled"] = not menu_open
-		end)
+		-- this is the bit that actually matters, and it is not MouseIconEnabled.
+		-- rivals sets MouseBehavior to LockCenter in first person, so the mouse
+		-- sits pinned to the middle of the screen. the menu draws its own cursor
+		-- off GetMouseLocation, so with LockCenter still in force that cursor
+		-- cannot move either. Default hands the mouse back to us.
+		if menu_open then
+			user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
+		else
+			-- closing. alive means first person, so lock it back the way the game
+			-- wants it. dead or respawning, the game decides and we stay out of it.
+			local char = local_player["Character"]
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+			if hum and hum["Health"] > 0 then
+				user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["LockCenter"]
+			else
+				user_input_service["MouseBehavior"] =
+					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
+			end
+		end
+
+		user_input_service["MouseIconEnabled"] = not menu_open
 
 		if moving then
 			moving:Disconnect()
@@ -9008,15 +9026,21 @@ do
 			context_action_service:UnbindCoreAction(context_action.typing_core)
 			context_action_service:UnbindAction(context_action.scroll)
 
-			-- unloading while open would otherwise leave no mouse icon behind
+			-- unloading while open would otherwise leave MouseBehavior on Default
+			-- with no menu to drive it, so the camera never locks again
 			menu_open = false
 
 			pcall(function()
-				user_input_service["MouseIconEnabled"] = true
+				run_service:UnbindFromRenderStep("simon_rent_menu_mouse")
 			end)
 
-			actives["cursor_owned"] = nil
-			actives["saved_mouse_icon"] = nil
+			pcall(function()
+				user_input_service["MouseBehavior"] =
+					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["LockCenter"]
+				user_input_service["MouseIconEnabled"] = not menu_open
+			end)
+
+			actives["original_mouse_behavior"] = nil
 
 			env["getrawmetatable"] = env["_OG"]
 
@@ -9035,34 +9059,35 @@ do
 		create_connection(
 			run_service["Heartbeat"],
 			LPH_NO_VIRTUALIZE(function(dt)
-				-- the menu draws its own cursor, so while it is open the engine
-				-- one is off. this runs every frame from render step, AFTER the
-				-- game has had its turn, which is what makes it stick: rivals
-				-- hides the icon on first person and would otherwise win.
-				pcall(function()
-					if menu_open then
-						-- remember what the game had the first time we take over
-						if not actives["cursor_owned"] then
-							actives["saved_mouse_icon"] = user_input_service["MouseIconEnabled"]
-							actives["cursor_owned"] = true
-						end
-
-						user_input_service["MouseIconEnabled"] = false
-					else
-						-- closed: always hand the icon back. rivals hides it on
-						-- first person, but if this menu ever left it hidden the
-						-- player has no way to aim, so the game is not trusted
-						-- here. only our own cursor goes away.
-						user_input_service["MouseIconEnabled"] = true
-						actives["cursor_owned"] = nil
-						actives["saved_mouse_icon"] = nil
-					end
-				end)
-
 				for i = 1, #heartbeat do
 					spawn(heartbeat[i], dt)
 				end
 			end)
+
+		-- the mouse has to be held off the game every single frame, not just on
+		-- toggle. rivals re-locks MouseBehavior from its own camera update, which
+		-- runs before the render step, so anything written during Heartbeat gets
+		-- stomped. RenderPriority.Last is the last thing to touch input in a
+		-- frame, so this wins. while shut we just keep a note of what the game
+		-- wants so closing can hand it straight back.
+		pcall(function()
+			run_service:UnbindFromRenderStep("simon_rent_menu_mouse")
+		end)
+
+		pcall(function()
+			run_service:BindToRenderStep(
+				"simon_rent_menu_mouse",
+				Enum["RenderPriority"]["Last"]["Value"],
+				LPH_NO_VIRTUALIZE(function()
+					if menu_open then
+						user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
+						user_input_service["MouseIconEnabled"] = false
+					else
+						actives["original_mouse_behavior"] = user_input_service["MouseBehavior"]
+					end
+				end)
+			)
+		end)
 		)
 
 		-- >> ( data )
