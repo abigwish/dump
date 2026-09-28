@@ -66,9 +66,28 @@ local IS_LOWEND = (function()
 	if typeof(getcustomasset) ~= "function" then return true end
 	return false
 end)()
+-- solara's cloneref hands back the first call's result for every later call, so
+-- every service after the first resolves to UserInputService. that is why
+-- ContextActionService had no BindAction. self-test the raw global, fall back
+-- to identity when it is broken.
 local cloneref = (function()
 	local orig = cloneref
 	if type(orig) ~= "function" then return function(v) return v end end
+
+	local ok_test = false
+	if typeof(game) == "table" and typeof(game.GetService) == "function" then
+		local ok_one, one = pcall(orig, game, "ContextActionService")
+		local ok_two, two = pcall(orig, game, "Players")
+		ok_test = ok_one and ok_two and one ~= nil and two ~= nil and one ~= two
+			and typeof(one) == "Instance" and typeof(two) == "Instance"
+			and one.ClassName == "ContextActionService" and two.ClassName == "Players"
+	end
+
+	if not ok_test then
+		warn("[simon.rent] cloneref unreliable on this executor, using direct references")
+		return function(v) return v end
+	end
+
 	return function(v)
 		local ok, r = pcall(orig, v)
 		if ok and r ~= nil then return r end
@@ -4362,26 +4381,44 @@ do
 			end
 		end
 
-		context_action_service:BindAction(
-			context_action.click,
-			handle_click,
-			false,
-			Enum["UserInputType"]["MouseButton1"],
-			Enum["UserInputType"]["Touch"]
-		)
-		context_action_service:BindAction(
-			context_action.scroll,
-			handle_scroll,
-			false,
-			Enum["UserInputType"]["MouseWheel"]
-		)
+		-- a bad service reference must not take the menu toggle down with it
+		local can_bind = type(context_action_service) == "table"
+			and typeof(context_action_service.BindAction) == "function"
+			and typeof(context_action_service.UnbindAction) == "function"
+
+		if can_bind then
+			pcall(function()
+				context_action_service:BindAction(
+					context_action.click,
+					handle_click,
+					false,
+					Enum["UserInputType"]["MouseButton1"],
+					Enum["UserInputType"]["Touch"]
+				)
+			end)
+
+			pcall(function()
+				context_action_service:BindAction(
+					context_action.scroll,
+					handle_scroll,
+					false,
+					Enum["UserInputType"]["MouseWheel"]
+				)
+			end)
+		else
+			warn("[simon.rent] ContextActionService unusable, mouse input disabled")
+		end
 
 		local old_tick = clock()
 		menu_tick = old_tick
 
 		if not menu_open then
-			context_action_service:UnbindAction(context_action.click)
-			context_action_service:UnbindAction(context_action.scroll)
+			if can_bind then
+				pcall(function()
+					context_action_service:UnbindAction(context_action.click)
+					context_action_service:UnbindAction(context_action.scroll)
+				end)
+			end
 
 			delay(0.17, function()
 				if old_tick == menu_tick then
