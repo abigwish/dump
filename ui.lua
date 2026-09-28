@@ -794,6 +794,8 @@ do
 		["tab"] = nil,
 		-- true only while the menu itself has hidden the engine cursor
 		["cursor_owned"] = nil,
+		-- the value the game had before we touched it, restored on close
+		["saved_mouse_icon"] = nil,
 		["colorpicker_saturation"] = 0,
 		["colorpicker_hue"] = 0,
 		["colorpicker_value"] = 0,
@@ -4000,11 +4002,6 @@ do
 		local mouse_position_y = mouse_position["Y"]
 
 		cursor["Position"] = udim2_new(0, mouse_position["X"], 0, mouse_position["Y"])
-		actives["cursor_owned"] = true
-
-		pcall(function()
-			user_input_service["MouseIconEnabled"] = false
-		end)
 
 		local connections = searching and hover_connections[search_out]
 			or actives["colorpicker"] and hover_connections[colorpicker_border]
@@ -4246,15 +4243,11 @@ do
 	local hovering = nil
 
 	pop_menu = LPH_JIT_MAX(function(a)
-		-- flip first and restore the engine cursor immediately. everything below
-		-- this point can throw, and a throw used to leave the player with no
-		-- mouse at all in a first person game.
+		-- flip the flag first. everything below this point can throw, and a throw
+		-- used to leave the player with no mouse at all in a first person game.
+		-- the cursor restore itself is owned by the render step loop below so
+		-- there is exactly one writer and it always wins the frame.
 		menu_open = not menu_open
-		actives["cursor_owned"] = menu_open
-
-		pcall(function()
-			user_input_service["MouseIconEnabled"] = not menu_open
-		end)
 
 		if moving then
 			moving:Disconnect()
@@ -9008,13 +9001,18 @@ do
 			context_action_service:UnbindCoreAction(context_action.typing_core)
 			context_action_service:UnbindAction(context_action.scroll)
 
-			-- unloading while open would otherwise leave no mouse icon behind
+			-- unloading while open would otherwise leave no mouse icon behind.
+			-- restore what the game had, same rule as the render step loop.
 			menu_open = false
-			actives["cursor_owned"] = nil
 
 			pcall(function()
-				user_input_service["MouseIconEnabled"] = true
+				if actives["cursor_owned"] then
+					user_input_service["MouseIconEnabled"] = actives["saved_mouse_icon"] ~= false
+				end
 			end)
+
+			actives["cursor_owned"] = nil
+			actives["saved_mouse_icon"] = nil
 
 			env["getrawmetatable"] = env["_OG"]
 
@@ -9033,16 +9031,27 @@ do
 		create_connection(
 			run_service["Heartbeat"],
 			LPH_NO_VIRTUALIZE(function(dt)
-				-- mouse watchdog. only ever undoes a hide this menu caused, and
-				-- only while the menu is shut. a no-op otherwise, so it costs one
-				-- table lookup per frame.
-				if not menu_open and actives["cursor_owned"] then
-					actives["cursor_owned"] = nil
+				-- the menu draws its own cursor, so while it is open the engine
+				-- one is off. this runs every frame from render step, AFTER the
+				-- game has had its turn, which is what makes it stick: rivals
+				-- hides the icon on first person and would otherwise win.
+				pcall(function()
+					if menu_open then
+						if not actives["cursor_owned"] then
+							actives["saved_mouse_icon"] = user_input_service["MouseIconEnabled"]
+							actives["cursor_owned"] = true
+						end
 
-					pcall(function()
-						user_input_service["MouseIconEnabled"] = true
-					end)
-				end
+						user_input_service["MouseIconEnabled"] = false
+					elseif actives["cursor_owned"] then
+						-- put back what the game had, not a hardcoded true. if
+						-- rivals hid the icon for first person we leave it hidden.
+						user_input_service["MouseIconEnabled"] =
+							actives["saved_mouse_icon"] ~= false
+						actives["cursor_owned"] = nil
+						actives["saved_mouse_icon"] = nil
+					end
+				end)
 
 				for i = 1, #heartbeat do
 					spawn(heartbeat[i], dt)
