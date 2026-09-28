@@ -9063,6 +9063,7 @@ do
 					spawn(heartbeat[i], dt)
 				end
 			end)
+		)
 
 		-- the mouse has to be held off the game every single frame, not just on
 		-- toggle. rivals re-locks MouseBehavior from its own camera update, which
@@ -9088,7 +9089,6 @@ do
 				end)
 			)
 		end)
-		)
 
 		-- >> ( data )
 
