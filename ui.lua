@@ -4257,19 +4257,18 @@ do
 		-- off GetMouseLocation, so with LockCenter still in force that cursor
 		-- cannot move either. Default hands the mouse back to us.
 		if menu_open then
+			-- take the game's value BEFORE overwriting it. this is the only
+			-- moment it is still correct, since the render step below pins it to
+			-- Default for as long as we are open.
+			actives["original_mouse_behavior"] = user_input_service["MouseBehavior"]
 			user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
 		else
-			-- closing. alive means first person, so lock it back the way the game
-			-- wants it. dead or respawning, the game decides and we stay out of it.
-			local char = local_player["Character"]
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-			if hum and hum["Health"] > 0 then
-				user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["LockCenter"]
-			else
-				user_input_service["MouseBehavior"] =
-					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
-			end
+			-- closing. hand back whatever the game had, do not guess. the old
+			-- version asked "is the humanoid alive" and locked to centre when yes,
+			-- which is only right for first person and pins the mouse shut the
+			-- moment you closed the menu in third person.
+			user_input_service["MouseBehavior"] =
+				actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
 		end
 
 		user_input_service["MouseIconEnabled"] = not menu_open
@@ -9027,7 +9026,7 @@ do
 			context_action_service:UnbindAction(context_action.scroll)
 
 			-- unloading while open would otherwise leave MouseBehavior on Default
-			-- with no menu to drive it, so the camera never locks again
+			-- with no menu left to drive it, so the camera would never lock again
 			menu_open = false
 
 			pcall(function()
@@ -9035,8 +9034,11 @@ do
 			end)
 
 			pcall(function()
+				-- same rule as pop_menu's close: restore what the game had. the
+				-- LockCenter fallback here was a guess and it pinned the mouse
+				-- shut when unloading in third person.
 				user_input_service["MouseBehavior"] =
-					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["LockCenter"]
+					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
 				user_input_service["MouseIconEnabled"] = not menu_open
 			end)
 
@@ -9069,8 +9071,12 @@ do
 		-- toggle. rivals re-locks MouseBehavior from its own camera update, which
 		-- runs before the render step, so anything written during Heartbeat gets
 		-- stomped. RenderPriority.Last is the last thing to touch input in a
-		-- frame, so this wins. while shut we just keep a note of what the game
-		-- wants so closing can hand it straight back.
+		-- frame, so this wins.
+		--
+		-- only the open branch runs. saving and restoring are both pop_menu's job:
+		-- it captures the game's value on the way in, before we overwrite it, and
+		-- hands it back on the way out. sampling from here would either read our
+		-- own Default or catch the game mid camera transition.
 		pcall(function()
 			run_service:UnbindFromRenderStep("simon_rent_menu_mouse")
 		end)
@@ -9083,9 +9089,10 @@ do
 					if menu_open then
 						user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
 						user_input_service["MouseIconEnabled"] = false
-					else
-						actives["original_mouse_behavior"] = user_input_service["MouseBehavior"]
 					end
+					-- nothing to do when shut. the game's value is sampled by
+					-- pop_menu on the way in and handed straight back on the way
+					-- out, which is the only pair of moments that are both correct.
 				end)
 			)
 		end)
