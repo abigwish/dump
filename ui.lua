@@ -4249,6 +4249,13 @@ do
 		-- there is exactly one writer and it always wins the frame.
 		menu_open = not menu_open
 
+		-- the heartbeat loop below owns this every frame, but it only runs
+		-- while that connection is alive. write it here too so closing can never
+		-- strand the player without a mouse, whichever order things run in.
+		pcall(function()
+			user_input_service["MouseIconEnabled"] = not menu_open
+		end)
+
 		if moving then
 			moving:Disconnect()
 			moving = nil
@@ -9001,14 +9008,11 @@ do
 			context_action_service:UnbindCoreAction(context_action.typing_core)
 			context_action_service:UnbindAction(context_action.scroll)
 
-			-- unloading while open would otherwise leave no mouse icon behind.
-			-- restore what the game had, same rule as the render step loop.
+			-- unloading while open would otherwise leave no mouse icon behind
 			menu_open = false
 
 			pcall(function()
-				if actives["cursor_owned"] then
-					user_input_service["MouseIconEnabled"] = actives["saved_mouse_icon"] ~= false
-				end
+				user_input_service["MouseIconEnabled"] = true
 			end)
 
 			actives["cursor_owned"] = nil
@@ -9037,17 +9041,19 @@ do
 				-- hides the icon on first person and would otherwise win.
 				pcall(function()
 					if menu_open then
+						-- remember what the game had the first time we take over
 						if not actives["cursor_owned"] then
 							actives["saved_mouse_icon"] = user_input_service["MouseIconEnabled"]
 							actives["cursor_owned"] = true
 						end
 
 						user_input_service["MouseIconEnabled"] = false
-					elseif actives["cursor_owned"] then
-						-- put back what the game had, not a hardcoded true. if
-						-- rivals hid the icon for first person we leave it hidden.
-						user_input_service["MouseIconEnabled"] =
-							actives["saved_mouse_icon"] ~= false
+					else
+						-- closed: always hand the icon back. rivals hides it on
+						-- first person, but if this menu ever left it hidden the
+						-- player has no way to aim, so the game is not trusted
+						-- here. only our own cursor goes away.
+						user_input_service["MouseIconEnabled"] = true
 						actives["cursor_owned"] = nil
 						actives["saved_mouse_icon"] = nil
 					end
