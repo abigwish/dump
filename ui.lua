@@ -723,6 +723,72 @@ do
 
 	local context_action_service = cloneref(game:GetService("ContextActionService"))
 	local context_action = { click = tostring({}):sub(math_random(8, 12)), scroll = tostring({}):sub(math_random(8, 12)), typing = tostring({}):sub(math_random(8, 12)), typing_core = tostring({}):sub(math_random(8, 12)) }
+	context_action["bind_action"] = LPH_NO_VIRTUALIZE(function(name, fn, touch, ...)
+		local svc = context_action_service
+		if svc == nil then
+			return false
+		end
+		local bind = nil
+		pcall(function()
+			bind = svc["BindAction"]
+		end)
+		if type(bind) ~= "function" then
+			return false
+		end
+		if type(fn) ~= "function" then
+			return false
+		end
+		local ok = pcall(bind, svc, name, fn, touch, ...)
+		return ok
+	end)
+	context_action["unbind_action"] = LPH_NO_VIRTUALIZE(function(name)
+		local svc = context_action_service
+		if svc == nil then
+			return false
+		end
+		local unbind = nil
+		pcall(function()
+			unbind = svc["UnbindAction"]
+		end)
+		if type(unbind) ~= "function" then
+			return false
+		end
+		local ok = pcall(unbind, svc, name)
+		return ok
+	end)
+	context_action["bind_core"] = LPH_NO_VIRTUALIZE(function(name, fn, touch, ...)
+		local svc = context_action_service
+		if svc == nil then
+			return false
+		end
+		local bind = nil
+		pcall(function()
+			bind = svc["BindCoreAction"]
+		end)
+		if type(bind) ~= "function" then
+			return false
+		end
+		if type(fn) ~= "function" then
+			return false
+		end
+		local ok = pcall(bind, svc, name, fn, touch, ...)
+		return ok
+	end)
+	context_action["unbind_core"] = LPH_NO_VIRTUALIZE(function(name)
+		local svc = context_action_service
+		if svc == nil then
+			return false
+		end
+		local unbind = nil
+		pcall(function()
+			unbind = svc["UnbindCoreAction"]
+		end)
+		if type(unbind) ~= "function" then
+			return false
+		end
+		local ok = pcall(unbind, svc, name)
+		return ok
+	end)
 
 	local shortened_characters = {
 		[Enum.KeyCode.LeftShift] = "lshift",
@@ -1288,7 +1354,11 @@ do
 			["value"] = true,
 			["original_value"] = false,
 			["set_activated"] = LPH_NO_VIRTUALIZE(function()
-				pop_menu()
+				pcall(function()
+					if type(pop_menu) == "function" then
+						pop_menu()
+					end
+				end)
 			end),
 		},
 	}
@@ -2105,7 +2175,17 @@ do
 			type_line["Visible"] = false
 		end
 
-		context_action_service:UnbindAction(context_action.typing)
+		pcall(function()
+			local svc = context_action_service
+			if svc == nil then
+				return
+			end
+			local unbind = svc["UnbindAction"]
+			if type(unbind) ~= "function" then
+				return
+			end
+			unbind(svc, context_action.typing)
+		end)
 	end
 
 	local stop_search = function()
@@ -2162,7 +2242,7 @@ do
 			local enter = Enum["KeyCode"]["Return"]
 			local shift = Enum["KeyCode"]["LeftShift"]
 
-			context_action_service:BindAction(context_action.typing, function(_, state, input)
+			context_action["bind_action"](context_action.typing, function(_, state, input)
 				if state == Enum["UserInputState"]["Begin"] then
 					local keycode = input["KeyCode"]
 					local is_enter = keycode == enter
@@ -2442,7 +2522,17 @@ do
 	end
 
 	local stop_binding = function(key)
-		context_action_service:UnbindCoreAction(context_action.typing_core)
+		pcall(function()
+			local svc = context_action_service
+			if svc == nil then
+				return
+			end
+			local unbind = svc["UnbindCoreAction"]
+			if type(unbind) ~= "function" then
+				return
+			end
+			unbind(svc, context_action.typing_core)
+		end)
 		tween(
 			actives["binding"]["drawings"]["keybind_text"],
 			{ ["Color"] = menu["colors"]["dark_text"] },
@@ -2478,7 +2568,7 @@ do
 			items[#items + 1] = a
 		end
 
-		context_action_service:BindCoreAction(context_action.typing_core, function(_, state, input)
+		context_action["bind_core"](context_action.typing_core, function(_, state, input)
 			local key = shortened_characters[input["UserInputType"]] and input["UserInputType"] or input["KeyCode"]
 
 			if state == Enum["UserInputState"]["Begin"] and key ~= Enum["KeyCode"]["Unknown"] then
@@ -3853,6 +3943,11 @@ do
 									and mouse_position_y < object_position["Y"] + object_size["Y"]
 								)
 							then
+								if getgenv()["DEBUG_HITBOX"] then
+									local __n = object["object"]["Name"]
+									if __n == "" then __n = object["object"]["ClassName"] end
+									print("[hitbox] " .. __n .. " pos=" .. tostring(object["real_position"]["X"]) .. "," .. tostring(object["real_position"]["Y"]) .. " size=" .. tostring(object["real_size"]["X"]) .. "," .. tostring(object["real_size"]["Y"]) .. " mouse=" .. tostring(mouse_position_x) .. "," .. tostring(mouse_position_y))
+								end
 								for i = 1, #data do
 									data[i](mouse_position)
 								end
@@ -4435,26 +4530,39 @@ do
 			end
 		end
 
-		context_action_service:BindAction(
-			context_action.click,
-			handle_click,
-			false,
-			Enum["UserInputType"]["MouseButton1"],
-			Enum["UserInputType"]["Touch"]
-		)
-		context_action_service:BindAction(
-			context_action.scroll,
-			handle_scroll,
-			false,
-			Enum["UserInputType"]["MouseWheel"]
-		)
+		pcall(function()
+			local svc = context_action_service
+			if svc == nil then
+				return
+			end
+			local bind = svc["BindAction"]
+			if type(bind) ~= "function" then
+				return
+			end
+			if type(handle_click) == "function" then
+				bind(svc, context_action.click, handle_click, false, Enum["UserInputType"]["MouseButton1"], Enum["UserInputType"]["Touch"])
+			end
+			if type(handle_scroll) == "function" then
+				bind(svc, context_action.scroll, handle_scroll, false, Enum["UserInputType"]["MouseWheel"])
+			end
+		end)
 
 		local old_tick = clock()
 		menu_tick = old_tick
 
 		if not menu_open then
-			context_action_service:UnbindAction(context_action.click)
-			context_action_service:UnbindAction(context_action.scroll)
+			pcall(function()
+				local svc = context_action_service
+				if svc == nil then
+					return
+				end
+				local unbind = svc["UnbindAction"]
+				if type(unbind) ~= "function" then
+					return
+				end
+				unbind(svc, context_action.click)
+				unbind(svc, context_action.scroll)
+			end)
 
 			delay(0.17, function()
 				if old_tick == menu_tick then
@@ -4474,22 +4582,34 @@ do
 
 			if not gpe then
 				for element, keybind in keybind_data do
-					local key = keybind["key"]
-					local is_key = user_input_type == key or input["KeyCode"] == key
-
-					if is_key then
-						local method = keybind["method"]
-
-						if method == 1 then
-							keybind:set_activated(not keybind["activated"])
-						else
-							keybind:set_activated(method == 3 and true or false)
+					pcall(function()
+						if type(keybind) ~= "table" then
+							return
 						end
-					end
+						local key = keybind["key"]
+						if key == nil then
+							return
+						end
+						local is_key = user_input_type == key or input["KeyCode"] == key
+
+						if is_key then
+							local set_activated = keybind["set_activated"]
+							if type(set_activated) ~= "function" then
+								return
+							end
+							local method = keybind["method"]
+
+							if method == 1 then
+								set_activated(keybind, not keybind["activated"])
+							else
+								set_activated(keybind, method == 3 and true or false)
+							end
+						end
+					end)
 				end
 
 				if menu_open and user_input_type == Enum["UserInputType"]["MouseButton2"] then
-					handle_right_click(nil, input)
+					pcall(handle_right_click, nil, input)
 				end
 			end
 		end)
@@ -4500,17 +4620,29 @@ do
 		LPH_NO_VIRTUALIZE(function(input, gpe)
 			if not gpe then
 				for _, keybind in keybind_data do
-					local key = keybind["key"]
-					local is_key = input["UserInputType"] == key or input["KeyCode"] == key
-
-					if is_key then
-						local method = keybind["method"]
-						if method == 2 then
-							keybind:set_activated(true)
-						elseif method == 3 then
-							keybind:set_activated(false)
+					pcall(function()
+						if type(keybind) ~= "table" then
+							return
 						end
-					end
+						local key = keybind["key"]
+						if key == nil then
+							return
+						end
+						local is_key = input["UserInputType"] == key or input["KeyCode"] == key
+
+						if is_key then
+							local set_activated = keybind["set_activated"]
+							if type(set_activated) ~= "function" then
+								return
+							end
+							local method = keybind["method"]
+							if method == 2 then
+								set_activated(keybind, true)
+							elseif method == 3 then
+								set_activated(keybind, false)
+							end
+						end
+					end)
 				end
 			end
 		end)
@@ -9061,10 +9193,22 @@ do
 				connections[i]:Disconnect()
 			end
 
-			context_action_service:UnbindAction(context_action.click)
-			context_action_service:UnbindAction(context_action.typing)
-			context_action_service:UnbindCoreAction(context_action.typing_core)
-			context_action_service:UnbindAction(context_action.scroll)
+			pcall(function()
+				local svc = context_action_service
+				if svc == nil then
+					return
+				end
+				local unbind = svc["UnbindAction"]
+				local unbind_core = svc["UnbindCoreAction"]
+				if type(unbind) == "function" then
+					unbind(svc, context_action.click)
+					unbind(svc, context_action.typing)
+					unbind(svc, context_action.scroll)
+				end
+				if type(unbind_core) == "function" then
+					unbind_core(svc, context_action.typing_core)
+				end
+			end)
 
 			-- unloading while open would otherwise leave MouseBehavior on Default
 			-- with no menu left to drive it, so the camera would never lock again
