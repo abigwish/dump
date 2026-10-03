@@ -5348,11 +5348,11 @@ do
 		})
 		local preview_text = drawing_proxy["new"]("Text", {
 			["Color"] = menu["colors"]["inactive_text"],
-			["Text"] = "nothing selected",
+			["Text"] = "",
 			["Size"] = 12,
 			["Font"] = 1,
 			["Transparency"] = 1,
-			["Visible"] = true,
+			["Visible"] = false,
 			["Parent"] = section_inside,
 			["Position"] = udim2_new(0, 10, 1, -18),
 		})
@@ -5401,7 +5401,7 @@ do
 				["BackgroundColor3"] = menu["colors"]["background"],
 				["BorderSizePixel"] = 0,
 				["Position"] = UDim2.new(0, 0, 0, 0),
-				["Size"] = UDim2.new(1, 0, 1, -22),
+				["Size"] = UDim2.new(1, 0, 1, 0),
 				["LightColor"] = Color3.fromRGB(255, 255, 255),
 				["Ambient"] = Color3.fromRGB(180, 180, 180),
 				["Visible"] = false,
@@ -5419,7 +5419,7 @@ do
 				["BackgroundTransparency"] = 1,
 				["BorderSizePixel"] = 0,
 				["Position"] = UDim2.new(0, 0, 0, 0),
-				["Size"] = UDim2.new(1, 0, 1, -22),
+				["Size"] = UDim2.new(1, 0, 1, 0),
 				["ScaleType"] = Enum.ScaleType.Fit,
 				["Visible"] = false,
 			})
@@ -5435,7 +5435,7 @@ do
 				["TextTruncate"] = Enum.TextTruncate.AtEnd,
 				["Position"] = UDim2.new(0, 0, 1, -22),
 				["Size"] = UDim2.new(1, 0, 0, 22),
-				["Visible"] = true,
+				["Visible"] = false,
 			})
 			caption["Parent"] = container
 		end)
@@ -6023,15 +6023,27 @@ do
 		})
 
 		local function layout()
-			local ok, width = pcall(function()
+			-- TextBounds lags a frame behind the Text write on both drawing
+			-- backends, so a synchronous read right after set_text returns
+			-- the stale width and the label spills past the panel edge.
+			-- estimate now (right every time), re-measure on a delay.
+			local text = tostring(label["Text"] or "")
+			local width = #text * 6.5
+			local ok, measured = pcall(function()
 				return label["TextBounds"]["X"]
 			end)
 
-			if ok and type(width) == "number" then
-				label["Position"] = udim2_new(1, -(width + 22), 0, -8)
-				hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
-				hit["Size"] = udim2_new(0, width + 22, 0, 14)
+			if ok and type(measured) == "number" and measured > 10 then
+				width = measured
 			end
+
+			if width > 160 then
+				width = 160
+			end
+
+			label["Position"] = udim2_new(1, -(width + 22), 0, -8)
+			hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
+			hit["Size"] = udim2_new(0, width + 22, 0, 14)
 		end
 
 		layout()
@@ -6051,6 +6063,10 @@ do
 		function handle:set_text(new_text)
 			label["Text"] = tostring(new_text or "")
 			layout()
+
+			delay(0.15, function()
+				pcall(layout)
+			end)
 		end
 
 		local function flip()
