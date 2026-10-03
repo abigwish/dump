@@ -3725,6 +3725,7 @@ do
 		local elements = actives["panel"]["elements"]
 		local search_text = search_text:lower()
 		local search_index = 0
+		local limit = actives["panel"]["max_rows"] or 13
 
 		for i = 1, #elements do
 			local element = elements[i]
@@ -3733,7 +3734,7 @@ do
 			local text = drawings["text"]
 			local text2 = element["text2"]
 			if
-				search_index < 13
+				search_index < limit
 				and (text["Text"]:lower():find(search_text) or text2 and text2:lower():find(search_text))
 			then
 				search_index += 1
@@ -5122,6 +5123,7 @@ do
 			["name"] = name,
 			["total_y_size"] = 30,
 			["scroll_index"] = 1,
+			["max_rows"] = 13,
 			["elements"] = {},
 			["selected"] = nil,
 			["on_selection_change"] = signal["new"](),
@@ -5262,8 +5264,9 @@ do
 
 		create_scroll_connection(section_border, section_border, function(is_up)
 			local old_scroll_index = new_section["scroll_index"]
+			local limit = new_section["max_rows"] or 13
 			new_section["scroll_index"] =
-				clamp(old_scroll_index + (is_up and -1 or 1), 1, 1 + clamp(#new_section["elements"] - 13, 0, 1000))
+				clamp(old_scroll_index + (is_up and -1 or 1), 1, 1 + clamp(#new_section["elements"] - limit, 0, 1000))
 			new_section:update_position()
 		end)
 
@@ -5645,7 +5648,7 @@ do
 			new_item["icons"][i] = { icon, name }
 		end
 
-		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - 13, 0, 1000))
+		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["max_rows"] or 13), 0, 1000))
 
 		local x = 4 + #icons * 15
 		text["Position"] = udim2_new(0, x, 0, 3)
@@ -5789,7 +5792,7 @@ do
 			drawings[_] = nil
 		end
 
-		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - 13, 0, 1000))
+		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["max_rows"] or 13), 0, 1000))
 
 		if not delay then
 			self:update_position()
@@ -5926,6 +5929,11 @@ do
 			return
 		end
 
+		if self["suspend_updates"] then
+			return
+		end
+
+		local limit = self["max_rows"] or 13
 		local scroll_index = self["scroll_index"]
 		local elements = self["elements"]
 		local fake_elements = {}
@@ -5949,7 +5957,7 @@ do
 
 		for i = 1, #fake_elements do
 			local frame = fake_elements[i]["drawings"]["border"]
-			if i >= scroll_index and i < scroll_index + 13 then
+			if i >= scroll_index and i < scroll_index + limit then
 				frame["Visible"] = true
 				frame["Position"] = udim2_new(0, 0, 0, 30 + (i - scroll_index) * 30)
 			else
