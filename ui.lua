@@ -5966,17 +5966,64 @@ do
 		end
 	end
 
-	-- small checkbox + right-aligned label living on the panel's top border,
-	-- e.g. a per-panel filter switch. stored on section["header_toggle"] so the
-	-- theme handlers can recolor it. not part of elements, so pop_menu and
-	-- search ignore it (visibility still follows the parent chrome).
+	-- full reset: destroys every row and unregisters its click/hover/
+	-- right-click handlers. destroying drawings alone leaves stale handlers
+	-- behind, so cleared rows keep firing on clicks that land on them.
+	function panel_section:clear_items()
+		local holder = self["holder"]
+
+		for _, element in pairs(self["elements"]) do
+			local drawings = element["drawings"] or {}
+			local border = drawings["border"]
+
+			if border then
+				if click_connections[holder] then
+					click_connections[holder][border] = nil
+				end
+
+				if hover_connections[holder] then
+					hover_connections[holder][border] = nil
+				end
+
+				if right_click_connections[holder] then
+					right_click_connections[holder][border] = nil
+				end
+
+				hovering_objects[border] = nil
+			end
+
+			for _, drawing in pairs(drawings) do
+				pcall(function()
+					drawing:Destroy()
+				end)
+			end
+		end
+
+		table.clear(self["elements"])
+
+		self["selected"] = nil
+		self["total_y_size"] = 30
+		self["scroll_index"] = 1
+	end
+
+	-- small checkbox + label living on the panel's top border, right after the
+	-- panel name, e.g. a per-panel filter switch. stored on
+	-- section["header_toggle"] so the theme handlers can recolor it. not part
+	-- of elements, so pop_menu and search ignore it (visibility still follows
+	-- the parent chrome).
 	function panel_section:add_header_toggle(text, default, callback)
 		local holder = self["holder"]
 		local inside = self["inside"]
 
+		-- anchored left, right after the panel name. fixed offsets with zero
+		-- live TextBounds reads: those lag a frame on both drawing backends,
+		-- which used to right-align against a stale width and spill the label
+		-- past the panel edge. this way it cannot overflow by construction.
+		local box_x = #tostring(self["name"] or "") * 6.5 + 27
+
 		local box = drawing_proxy["new"]("Image", {
 			["Parent"] = inside,
-			["Position"] = udim2_new(1, -16, 0, -7),
+			["Position"] = udim2_new(0, box_x, 0, -7),
 			["Size"] = udim2_new(0, 12, 0, 12),
 			["Color"] = menu["colors"]["border"],
 			["Transparency"] = 1,
@@ -6001,7 +6048,7 @@ do
 			["Transparency"] = 1,
 			["Visible"] = true,
 			["Parent"] = inside,
-			["Position"] = udim2_new(1, -150, 0, -8),
+			["Position"] = udim2_new(0, box_x + 16, 0, -8),
 		})
 
 		local handle = {
@@ -6016,37 +6063,18 @@ do
 		-- cannot read, so clicks land on this invisible square instead
 		local hit = drawing_proxy["new"]("Square", {
 			["Parent"] = inside,
-			["Position"] = udim2_new(1, -172, 0, -9),
-			["Size"] = udim2_new(0, 172, 0, 14),
+			["Position"] = udim2_new(0, box_x, 0, -9),
+			["Size"] = udim2_new(0, 170, 0, 14),
 			["Transparency"] = 0,
 			["Visible"] = true,
 		})
 
-		local function layout()
-			-- TextBounds lags a frame behind the Text write on both drawing
-			-- backends, so a synchronous read right after set_text returns
-			-- the stale width and the label spills past the panel edge.
-			-- estimate now (right every time), re-measure on a delay.
-			local text = tostring(label["Text"] or "")
-			local width = #text * 6.5
-			local ok, measured = pcall(function()
-				return label["TextBounds"]["X"]
-			end)
-
-			if ok and type(measured) == "number" and measured > 10 then
-				width = measured
-			end
-
-			if width > 160 then
-				width = 160
-			end
-
-			label["Position"] = udim2_new(1, -(width + 22), 0, -8)
-			hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
-			hit["Size"] = udim2_new(0, width + 22, 0, 14)
+		local function layout(text)
+			text = tostring(text or "")
+			hit["Size"] = udim2_new(0, math.min(#text * 6.5 + 34, 170), 0, 14)
 		end
 
-		layout()
+		layout(text)
 
 		function handle:set(value)
 			value = value and true or false
@@ -6061,12 +6089,14 @@ do
 		end
 
 		function handle:set_text(new_text)
-			label["Text"] = tostring(new_text or "")
-			layout()
+			new_text = tostring(new_text or "")
 
-			delay(0.15, function()
-				pcall(layout)
-			end)
+			if #new_text > 24 then
+				new_text = new_text:sub(1, 23) .. ".."
+			end
+
+			label["Text"] = new_text
+			layout(new_text)
 		end
 
 		local function flip()
