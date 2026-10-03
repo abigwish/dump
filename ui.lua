@@ -6006,24 +6006,21 @@ do
 		self["scroll_index"] = 1
 	end
 
-	-- small checkbox + label living on the panel's top border, right after the
-	-- panel name, e.g. a per-panel filter switch. stored on
-	-- section["header_toggle"] so the theme handlers can recolor it. not part
-	-- of elements, so pop_menu and search ignore it (visibility still follows
-	-- the parent chrome).
+	-- small checkbox + label pinned to the panel's top-right corner, e.g. a
+	-- per-panel filter switch. stored on section["header_toggle"] so the
+	-- theme handlers can recolor it. not part of elements, so pop_menu and
+	-- search ignore it (visibility still follows the parent chrome).
 	function panel_section:add_header_toggle(text, default, callback)
 		local holder = self["holder"]
 		local inside = self["inside"]
 
-		-- anchored left, right after the panel name. fixed offsets with zero
-		-- live TextBounds reads: those lag a frame on both drawing backends,
-		-- which used to right-align against a stale width and spill the label
-		-- past the panel edge. this way it cannot overflow by construction.
-		local box_x = #tostring(self["name"] or "") * 6.5 + 27
-
+		-- pinned to the top-right corner: checkbox at a fixed offset, label
+		-- right-aligned against it using live TextBounds (both drawing
+		-- backends refresh bounds synchronously on Text set, so this is
+		-- exact with no guessing).
 		local box = drawing_proxy["new"]("Image", {
 			["Parent"] = inside,
-			["Position"] = udim2_new(0, box_x, 0, -7),
+			["Position"] = udim2_new(1, -16, 0, -7),
 			["Size"] = udim2_new(0, 12, 0, 12),
 			["Color"] = menu["colors"]["border"],
 			["Transparency"] = 1,
@@ -6048,7 +6045,7 @@ do
 			["Transparency"] = 1,
 			["Visible"] = true,
 			["Parent"] = inside,
-			["Position"] = udim2_new(0, box_x + 16, 0, -8),
+			["Position"] = udim2_new(1, -100, 0, -8),
 		})
 
 		local handle = {
@@ -6063,18 +6060,33 @@ do
 		-- cannot read, so clicks land on this invisible square instead
 		local hit = drawing_proxy["new"]("Square", {
 			["Parent"] = inside,
-			["Position"] = udim2_new(0, box_x, 0, -9),
-			["Size"] = udim2_new(0, 170, 0, 14),
+			["Position"] = udim2_new(1, -100, 0, -9),
+			["Size"] = udim2_new(0, 100, 0, 14),
 			["Transparency"] = 0,
 			["Visible"] = true,
 		})
 
-		local function layout(text)
-			text = tostring(text or "")
-			hit["Size"] = udim2_new(0, math.min(#text * 6.5 + 34, 170), 0, 14)
+		local function layout()
+			local text = tostring(label["Text"] or "")
+			local width = #text * 7
+			local ok, measured = pcall(function()
+				return label["TextBounds"]["X"]
+			end)
+
+			if ok and type(measured) == "number" and measured > 0 then
+				width = measured
+			end
+
+			if width > 170 then
+				width = 170
+			end
+
+			label["Position"] = udim2_new(1, -(width + 22), 0, -8)
+			hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
+			hit["Size"] = udim2_new(0, width + 22, 0, 14)
 		end
 
-		layout(text)
+		layout()
 
 		function handle:set(value)
 			value = value and true or false
@@ -6096,7 +6108,7 @@ do
 			end
 
 			label["Text"] = new_text
-			layout(new_text)
+			layout()
 		end
 
 		local function flip()
