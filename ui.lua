@@ -9900,6 +9900,9 @@ do
 end
 
 return {
+	-- bump on any api/behavior change. main.lua refuses to run below its
+	-- minimum, so a stale cached copy fails loud instead of half-working.
+	["ui_version"] = 7,
 	["menu"] = menu,
 	["signal"] = signal,
 	["tween"] = tween,
