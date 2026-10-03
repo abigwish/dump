@@ -39,7 +39,7 @@ local file_path = (function()
 	if ok and type(g) == "table" and type(g.custom_folder) == "string" and #g.custom_folder > 0 then
 		return g.custom_folder
 	end
-	return "simon dot rent"
+	return "1336mafia"
 end)()
 -- volt name check, case-insensitive + pcall-safe
 local IS_VOLT = (function()
@@ -525,7 +525,7 @@ local menu = {
 		["error"] = color3_fromrgb(39, 60, 96),
 		["alert"] = color3_fromrgb(30, 51, 61),
 		["logo"] = color3_fromrgb(154, 213, 222),
-		["simon"] = color3_fromrgb(154, 213, 222),
+		["1336mafia"] = color3_fromrgb(154, 213, 222),
 		["build"] = color3_fromrgb(154, 213, 222),
 		["cursor"] = color3_fromrgb(154, 213, 222),
 	},
@@ -579,7 +579,7 @@ do
 				["jaydes.png"] = "https://raw.githubusercontent.com/panduh16/juju/main/assets/jaydes.png",
 				["1.png"] = "https://raw.githubusercontent.com/panduh16/juju/main/assets/1.png",
 				["2.png"] = "https://raw.githubusercontent.com/panduh16/juju/main/assets/2.png",
-				["logo.png"] = "https://raw.githubusercontent.com/abigwish/dump/main/simon.png",
+				["logo.png"] = "https://raw.githubusercontent.com/abigwish/dump/main/1336mafia.png",
 				["saturation.png"] = "https://raw.githubusercontent.com/panduh16/juju/main/assets/saturation.png",
 			},
 			["custom"] = {
@@ -622,12 +622,12 @@ do
 						if content ~= nil then
 							writefile(path, content)
 						else
-							warn("[simon.rent] Failed to download (keeping missing):", path, data)
+							warn("[1336mafia.de] Failed to download (keeping missing):", path, data)
 						end
 					elseif data ~= nil then
 						writefile(path, type(data) == "function" and data() or data)
 					else
-						warn("[simon.rent] No data for missing file, skipping:", path)
+						warn("[1336mafia.de] No data for missing file, skipping:", path)
 					end
 				end
 			end
@@ -649,10 +649,10 @@ do
         local function try_load(content, tag)
             if type(content) ~= "string" or #content == 0 then return nil end
             local fn, err = loadstring(content)
-            if not fn then warn("[simon.rent] " .. tag .. " compile failed: " .. tostring(err)); return nil end
+            if not fn then warn("[1336mafia.de] " .. tag .. " compile failed: " .. tostring(err)); return nil end
             local ok, api = pcall(fn)
             if ok and type(api) == "table" and api["new"] ~= nil then return api end
-            warn("[simon.rent] " .. tag .. " invalid (missing .new)")
+            warn("[1336mafia.de] " .. tag .. " invalid (missing .new)")
             return nil
         end
         local function try_cache(path, tag)
@@ -667,7 +667,7 @@ do
                 return game:HttpGet(url)
             end)
             if not ok or type(content) ~= "string" or #content == 0 then
-                warn("[simon.rent] Failed to download " .. tag .. " from GitHub")
+                warn("[1336mafia.de] Failed to download " .. tag .. " from GitHub")
                 return nil
             end
             local api = try_load(content, tag)
@@ -676,7 +676,7 @@ do
             end
             return api
         end
-        warn("[simon.rent] executor=" .. tostring(EXEC_NAME) .. " lowend=" .. tostring(IS_LOWEND))
+        warn("[1336mafia.de] executor=" .. tostring(EXEC_NAME) .. " lowend=" .. tostring(IS_LOWEND))
         local backend = nil
         local api = nil
         -- lowend = solara/xeno name or no Drawing around
@@ -709,11 +709,11 @@ do
             if typeof(Drawing) == "table" and Drawing["new"] ~= nil then drawing = Drawing end
         end
         if drawing == nil then
-            warn("[simon.rent] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
+            warn("[1336mafia.de] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
         elseif backend ~= nil then
-            warn("[simon.rent] drawing backend: " .. backend)
+            warn("[1336mafia.de] drawing backend: " .. backend)
         else
-            warn("[simon.rent] drawing backend: native Drawing")
+            warn("[1336mafia.de] drawing backend: native Drawing")
         end
     end)()
 
@@ -912,7 +912,7 @@ do
 	drawing_proxy = {}
 	-- volt path, nil-safe
 	local create1 = (IS_LOWEND and (type(drawing) == "table" and drawing["new"])) or (IS_VOLT and (typeof(Drawing) == "table" and Drawing["new"]) or (type(drawing) == "table" and drawing["new"])) or (typeof(Drawing) == "table" and Drawing["new"]) or (type(drawing) == "table" and drawing["new"])
-	assert(create1 ~= nil, "[simon.rent] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
+	assert(create1 ~= nil, "[1336mafia.de] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
 
 	drawing_proxy.new = false -- Volt uses archive (non-AWP) text rendering, no +2 size bump
 			and LPH_NO_VIRTUALIZE(function(class, properties)
@@ -1153,10 +1153,10 @@ do
 		["Transparency"] = 1,
 	})
 
-	local simon_text = drawing_proxy["new"]("Text", {
+	local 1336mafia_text = drawing_proxy["new"]("Text", {
 		["Font"] = 1,
 		["Color"] = color3_fromrgb(255, 255, 255),
-		["Text"] = getgenv().script_name or "simon",
+		["Text"] = getgenv().script_name or "1336mafia",
 		["Parent"] = logo,
 		["Position"] = udim2_new(1, 5, 0, 3),
 		["Size"] = 14,
@@ -1623,12 +1623,12 @@ do
 						local flag = element["color_flag"]
 						if flag then
 							local color = data[flag]
-								or data[flag:gsub("simon", "juju")]
-								or data[flag:gsub("juju", "simon")]
+								or data[flag:gsub("1336mafia", "juju")]
+								or data[flag:gsub("juju", "1336mafia")]
 							if not color and flag:sub(1, 1) == "!" then
 								color = data[flag:sub(2)]
-									or data[flag:sub(2):gsub("simon", "juju")]
-									or data[flag:sub(2):gsub("juju", "simon")]
+									or data[flag:sub(2):gsub("1336mafia", "juju")]
+									or data[flag:sub(2):gsub("juju", "1336mafia")]
 							end
 
 							if color then
@@ -4493,7 +4493,7 @@ do
 		tween(frame, transparency, exponential, out, 0.18)
 		tween(inside, transparency, exponential, out, 0.18)
 		tween(logo, transparency, exponential, out, 0.18)
-		tween(simon_text, transparency, exponential, out, 0.18)
+		tween(1336mafia_text, transparency, exponential, out, 0.18)
 		tween(build_text, transparency, exponential, out, 0.18)
 		tween(right_side, transparency, exponential, out, 0.18)
 		tween(right_side_divider, transparency, exponential, out, 0.18)
@@ -5408,7 +5408,7 @@ do
 
 		pcall(function()
 			gui = create_instance("ScreenGui", {
-				["Name"] = "simon_preview_" .. tostring(name),
+				["Name"] = "1336mafia_preview_" .. tostring(name),
 				["ResetOnSpawn"] = false,
 				["IgnoreGuiInset"] = true,
 				["DisplayOrder"] = 1000,
@@ -8339,7 +8339,7 @@ do
 				end)
 
 				if not s then
-					return "simon: addon " .. name .. " experienced an error while loading: " .. err
+					return "1336mafia: addon " .. name .. " experienced an error while loading: " .. err
 				end
 
 				if addon_data[name] then
@@ -8364,7 +8364,7 @@ do
 
 				if not s then
 					spawn(menu["unload_addon"], name)
-					error("simon: addon " .. name .. " experienced an error while loading: " .. err)
+					error("1336mafia: addon " .. name .. " experienced an error while loading: " .. err)
 				end
 			end
 		end
@@ -8505,14 +8505,14 @@ do
 
 			create_connection(
 				settings_section:create_element({
-					["name"] = "unload simon",
+					["name"] = "unload 1336mafia",
 				}, {
 					["button"] = {
 						["confirmation"] = true,
 					},
 				})["on_clicked"],
 				function()
-					getgenv()["_simon"]()
+					getgenv()["_1336mafia"]()
 
 					if IS_VOLT then
 						pcall(cleardrawcache)
@@ -8567,18 +8567,18 @@ do
 
 			create_connection(
 				theme_section:create_element({
-					["name"] = "simon color",
+					["name"] = "1336mafia color",
 				}, {
 					["colorpicker"] = {
-						["default_color"] = menu["colors"]["simon"],
+						["default_color"] = menu["colors"]["1336mafia"],
 						["default_transparency"] = 0,
-						["transparency_flag"] = "!simon_transparency",
-						["color_flag"] = "!simon_color",
+						["transparency_flag"] = "!1336mafia_transparency",
+						["color_flag"] = "!1336mafia_color",
 					},
 				})["on_color_change"],
 				function(color)
-					menu["colors"]["simon"] = color
-					simon_text["Color"] = color
+					menu["colors"]["1336mafia"] = color
+					1336mafia_text["Color"] = color
 				end
 			)
 
@@ -9691,7 +9691,7 @@ do
 	-- > ( loading / unloading )
 
 	do
-		local unload = getgenv()["_simon"]
+		local unload = getgenv()["_1336mafia"]
 
 		if unload then
 			pcall(unload)
@@ -9712,8 +9712,8 @@ do
 
 		getrawmetatable = env["getrawmetatable"]
 
-		env["_simon"] = function()
-			env["_simon"] = nil
+		env["_1336mafia"] = function()
+			env["_1336mafia"] = nil
 
 			for _, group in menu["groups"] do
 				for _, tab in group["tabs"] do
@@ -9776,7 +9776,7 @@ do
 			menu_open = false
 
 			pcall(function()
-				run_service:UnbindFromRenderStep("simon_rent_menu_mouse")
+				run_service:UnbindFromRenderStep("1336mafia_rent_menu_mouse")
 			end)
 
 			pcall(function()
@@ -9824,12 +9824,12 @@ do
 		-- hands it back on the way out. sampling from here would either read our
 		-- own Default or catch the game mid camera transition.
 		pcall(function()
-			run_service:UnbindFromRenderStep("simon_rent_menu_mouse")
+			run_service:UnbindFromRenderStep("1336mafia_rent_menu_mouse")
 		end)
 
 		pcall(function()
 			run_service:BindToRenderStep(
-				"simon_rent_menu_mouse",
+				"1336mafia_rent_menu_mouse",
 				Enum["RenderPriority"]["Last"]["Value"],
 				LPH_NO_VIRTUALIZE(function()
 					if menu_open then
