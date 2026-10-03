@@ -5966,6 +5966,115 @@ do
 		end
 	end
 
+	-- small checkbox + right-aligned label living on the panel's top border,
+	-- e.g. a per-panel filter switch. stored on section["header_toggle"] so the
+	-- theme handlers can recolor it. not part of elements, so pop_menu and
+	-- search ignore it (visibility still follows the parent chrome).
+	function panel_section:add_header_toggle(text, default, callback)
+		local holder = self["holder"]
+		local inside = self["inside"]
+
+		local box = drawing_proxy["new"]("Image", {
+			["Parent"] = inside,
+			["Position"] = udim2_new(1, -16, 0, -7),
+			["Size"] = udim2_new(0, 12, 0, 12),
+			["Color"] = menu["colors"]["border"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["Visible"] = true,
+		})
+		local check = drawing_proxy["new"]("Image", {
+			["Parent"] = box,
+			["Position"] = udim2_new(0, 1, 0, 1),
+			["Size"] = udim2_new(1, -2, 1, -2),
+			["Data"] = checkmark_image_data,
+			["Transparency"] = default and 0.5 or 0,
+			["Color"] = menu["colors"]["accent"],
+			["Visible"] = true,
+		})
+		local label = drawing_proxy["new"]("Text", {
+			["Color"] = menu["colors"]["inactive_text"],
+			["Text"] = text or "",
+			["Size"] = 12,
+			["Font"] = 1,
+			["Transparency"] = 1,
+			["Visible"] = true,
+			["Parent"] = inside,
+			["Position"] = udim2_new(1, -150, 0, -8),
+		})
+
+		local handle = {
+			["value"] = default and true or false,
+			["on_change"] = signal["new"](),
+			["_box"] = box,
+			["_check"] = check,
+			["_label"] = label,
+		}
+
+		-- text drawings carry a numeric size, which the click/hover hit test
+		-- cannot read, so clicks land on this invisible square instead
+		local hit = drawing_proxy["new"]("Square", {
+			["Parent"] = inside,
+			["Position"] = udim2_new(1, -172, 0, -9),
+			["Size"] = udim2_new(0, 172, 0, 14),
+			["Transparency"] = 0,
+			["Visible"] = true,
+		})
+
+		local function layout()
+			local ok, width = pcall(function()
+				return label["TextBounds"]["X"]
+			end)
+
+			if ok and type(width) == "number" then
+				label["Position"] = udim2_new(1, -(width + 22), 0, -8)
+				hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
+				hit["Size"] = udim2_new(0, width + 22, 0, 14)
+			end
+		end
+
+		layout()
+
+		function handle:set(value)
+			value = value and true or false
+
+			if value == self["value"] then
+				return
+			end
+
+			self["value"] = value
+			tween(check, { Transparency = value and 0.5 or 0 }, exponential, out, 0.2)
+			self["on_change"]:Fire(value)
+		end
+
+		function handle:set_text(new_text)
+			label["Text"] = tostring(new_text or "")
+			layout()
+		end
+
+		local function flip()
+			handle:set(not handle["value"])
+		end
+
+		create_hover_connection(holder, box, function()
+			tween(box, { Color = menu["colors"]["highlighted"] }, circular, out, 0.17)
+		end, function()
+			tween(box, { Color = menu["colors"]["border"] }, circular, out, 0.17)
+		end)
+
+		create_click_connection(holder, box, flip)
+		create_click_connection(holder, hit, flip)
+
+		if type(callback) == "function" then
+			create_connection(handle["on_change"], callback)
+		end
+
+		self["header_toggle"] = handle
+
+		return handle
+	end
+
 	-- > ( elements )
 
 	function element.new(info, elements)
@@ -7425,6 +7534,12 @@ do
 								checkmark["Color"] = color
 							end
 						end
+
+						local header_toggle = section["header_toggle"]
+
+						if header_toggle and header_toggle["_check"] then
+							header_toggle["_check"]["Color"] = color
+						end
 					end
 				end
 			end
@@ -8493,6 +8608,12 @@ do
 									if textbox_border then
 										textbox_border["Color"] = color
 									end
+								end
+
+								local header_toggle = section["header_toggle"]
+
+								if header_toggle and header_toggle["_box"] then
+									header_toggle["_box"]["Color"] = color
 								end
 							end
 						end
