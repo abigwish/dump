@@ -6060,10 +6060,11 @@ do
 		self["scroll_index"] = 1
 	end
 
-	-- pinned toggle row: looks like a normal list entry with a checkbox, but
-	-- clicking flips it instead of selecting. always lays out first at a fixed
-	-- spot while visible, survives clear_items, ignored by search matching.
-	-- stored on section["pinned"] with visibility in pin_visible.
+	-- pinned toggle row: plain checkbox + text like a normal toggle element,
+	-- no entry box. clicking flips it instead of selecting. always lays out
+	-- first at a fixed spot while visible, survives clear_items, ignored by
+	-- search matching. stored on section["pinned"] with visibility in
+	-- pin_visible.
 	function panel_section:add_toggle_row(text, default, callback)
 		local holder = self["holder"]
 
@@ -6075,36 +6076,32 @@ do
 			["is_pin"] = true,
 		}, item)
 
-		local border = drawing_proxy["new"]("Image", {
+		-- invisible positioning frame, the layout code moves this around
+		local border = drawing_proxy["new"]("Square", {
 			["Parent"] = holder,
 			["Position"] = udim2_new(0, 0, 0, 30),
 			["Size"] = udim2_new(1, 0, 0, 20),
+			["Transparency"] = 0,
+			["Visible"] = false,
+		})
+		local box = drawing_proxy["new"]("Image", {
+			["Parent"] = border,
+			["Position"] = udim2_new(0, 0, 0, 4),
+			["Size"] = udim2_new(0, 12, 0, 12),
 			["Color"] = menu["colors"]["border"],
 			["Transparency"] = 1,
 			["Rounding"] = 4,
 			["Data"] = pixel_image_data,
-			["Visible"] = false,
+			["Visible"] = true,
 		})
-		local inside = drawing_proxy["new"]("Image", {
-			["Parent"] = border,
+		local box_inside = drawing_proxy["new"]("Image", {
+			["Parent"] = box,
 			["Position"] = udim2_new(0, 1, 0, 1),
 			["Size"] = udim2_new(1, -2, 1, -2),
 			["Color"] = menu["colors"]["background"],
 			["Transparency"] = 1,
 			["Rounding"] = 4,
 			["Data"] = pixel_image_data,
-			["ZIndex"] = 2,
-			["Visible"] = true,
-		})
-		local box = drawing_proxy["new"]("Image", {
-			["Parent"] = inside,
-			["Position"] = udim2_new(0, 4, 0, 4),
-			["Size"] = udim2_new(0, 12, 0, 12),
-			["Color"] = menu["colors"]["border"],
-			["Transparency"] = 1,
-			["Rounding"] = 4,
-			["Data"] = pixel_image_data,
-			["ZIndex"] = 4,
 			["Visible"] = true,
 		})
 		local check = drawing_proxy["new"]("Image", {
@@ -6114,7 +6111,6 @@ do
 			["Data"] = checkmark_image_data,
 			["Transparency"] = default and 0.5 or 0,
 			["Color"] = menu["colors"]["accent"],
-			["ZIndex"] = 5,
 			["Visible"] = true,
 		})
 		local label = drawing_proxy["new"]("Text", {
@@ -6124,13 +6120,14 @@ do
 			["Font"] = 1,
 			["Transparency"] = 1,
 			["Visible"] = true,
-			["Parent"] = inside,
-			["ZIndex"] = 4,
-			["Position"] = udim2_new(0, 21, 0, 3),
+			["Parent"] = border,
+			["Position"] = udim2_new(0, 17, 0, 3),
 		})
 
 		new_item["drawings"]["border"] = border
-		new_item["drawings"]["inside"] = inside
+		new_item["drawings"]["box"] = box
+		new_item["drawings"]["box_inside"] = box_inside
+		new_item["drawings"]["check"] = check
 		new_item["drawings"]["text"] = label
 
 		local handle = {
@@ -6176,9 +6173,9 @@ do
 		end
 
 		create_hover_connection(holder, border, function()
-			tween(border, { Color = menu["colors"]["highlighted"] }, circular, out, 0.17)
+			tween(box, { Color = menu["colors"]["highlighted"] }, circular, out, 0.17)
 		end, function()
-			tween(border, { Color = menu["colors"]["border"] }, circular, out, 0.17)
+			tween(box, { Color = menu["colors"]["border"] }, circular, out, 0.17)
 		end)
 
 		create_click_connection(holder, border, flip)
