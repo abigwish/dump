@@ -3722,13 +3722,34 @@ do
 
 		actives["panel"]["scroll_index"] = 1
 
-		local elements = actives["panel"]["elements"]
+		local panel = actives["panel"]
+		local elements = panel["elements"]
 		local search_text = search_text:lower()
 		local search_index = 0
-		local limit = actives["panel"]["max_rows"] or 13
+		local pinned = panel["pinned"]
+		local pin_shown = pinned ~= nil and panel["pin_visible"] ~= false
+		local limit = (panel["max_rows"] or 13) - (pin_shown and 1 or 0)
+		local base = pin_shown and 60 or 30
+
+		if limit < 1 then
+			limit = 1
+		end
+
+		if pinned then
+			pinned["drawings"]["border"]["Visible"] = pin_shown
+
+			if pin_shown then
+				pinned["drawings"]["border"]["Position"] = udim2_new(0, 0, 0, 30)
+			end
+		end
 
 		for i = 1, #elements do
 			local element = elements[i]
+
+			if element == pinned then
+				continue
+			end
+
 			local drawings = element["drawings"]
 			local frame = drawings["border"]
 			local text = drawings["text"]
@@ -3739,7 +3760,7 @@ do
 			then
 				search_index += 1
 				frame["Visible"] = true
-				frame["Position"] = udim2_new(0, 0, 0, 30 + (search_index - 1) * 30)
+				frame["Position"] = udim2_new(0, 0, 0, base + (search_index - 1) * 30)
 			else
 				frame["Visible"] = false
 			end
@@ -5264,7 +5285,13 @@ do
 
 		create_scroll_connection(section_border, section_border, function(is_up)
 			local old_scroll_index = new_section["scroll_index"]
-			local limit = new_section["max_rows"] or 13
+			local limit = (new_section["max_rows"] or 13)
+				- ((new_section["pinned"] ~= nil and new_section["pin_visible"] ~= false) and 1 or 0)
+
+			if limit < 1 then
+				limit = 1
+			end
+
 			new_section["scroll_index"] =
 				clamp(old_scroll_index + (is_up and -1 or 1), 1, 1 + clamp(#new_section["elements"] - limit, 0, 1000))
 			new_section:update_position()
@@ -5648,7 +5675,7 @@ do
 			new_item["icons"][i] = { icon, name }
 		end
 
-		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["max_rows"] or 13), 0, 1000))
+		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["pinned"] and 1 or 0) - (self["max_rows"] or 13), 0, 1000))
 
 		local x = 4 + #icons * 15
 		text["Position"] = udim2_new(0, x, 0, 3)
@@ -5792,7 +5819,7 @@ do
 			drawings[_] = nil
 		end
 
-		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["max_rows"] or 13), 0, 1000))
+		self["scroll_index"] = clamp(self["scroll_index"], 1, 1 + clamp(#self["elements"] - (self["pinned"] and 1 or 0) - (self["max_rows"] or 13), 0, 1000))
 
 		if not delay then
 			self:update_position()
@@ -5936,30 +5963,47 @@ do
 		local limit = self["max_rows"] or 13
 		local scroll_index = self["scroll_index"]
 		local elements = self["elements"]
+		local pinned = self["pinned"]
+		local pin_shown = pinned ~= nil and self["pin_visible"] ~= false
+
+		-- pinned toggle row always sits first at a fixed spot, the scrolling
+		-- list starts below it and gets one less slot
+		local base = pin_shown and 60 or 30
+		local slots = limit - (pin_shown and 1 or 0)
+
+		if slots < 1 then
+			slots = 1
+		end
+
+		if pinned then
+			pinned["drawings"]["border"]["Visible"] = pin_shown
+
+			if pin_shown then
+				pinned["drawings"]["border"]["Position"] = udim2_new(0, 0, 0, 30)
+			end
+		end
+
 		local fake_elements = {}
 
 		for i = 1, #elements do
 			local element = elements[i]
-			if element["favorited"] then
-				local frame = elements[i]["drawings"]["border"]
-				frame["Visible"] = true
-				frame["Position"] = udim2_new(0, 0, 0, 30 + (i - scroll_index) * 30)
+			if element ~= pinned and element["favorited"] then
 				fake_elements[#fake_elements + 1] = element
 			end
 		end
 
 		for i = 1, #elements do
 			local element = elements[i]
-			if not element["favorited"] then
+			if element ~= pinned and not element["favorited"] then
 				fake_elements[#fake_elements + 1] = element
 			end
 		end
 
 		for i = 1, #fake_elements do
 			local frame = fake_elements[i]["drawings"]["border"]
-			if i >= scroll_index and i < scroll_index + limit then
+			if i >= scroll_index and i < scroll_index + slots then
 				frame["Visible"] = true
-				frame["Position"] = udim2_new(0, 0, 0, 30 + (i - scroll_index) * 30)
+				frame["Position"] = udim2_new(0, 0, 0, base + (i - scroll_index) * 30)
 			else
 				frame["Visible"] = false
 			end
@@ -5969,10 +6013,16 @@ do
 	-- full reset: destroys every row and unregisters its click/hover/
 	-- right-click handlers. destroying drawings alone leaves stale handlers
 	-- behind, so cleared rows keep firing on clicks that land on them.
+	-- the pinned toggle row survives and stays first.
 	function panel_section:clear_items()
 		local holder = self["holder"]
+		local pinned = self["pinned"]
 
 		for _, element in pairs(self["elements"]) do
+			if element == pinned then
+				continue
+			end
+
 			local drawings = element["drawings"] or {}
 			local border = drawings["border"]
 
@@ -6001,31 +6051,60 @@ do
 
 		table.clear(self["elements"])
 
+		if pinned then
+			self["elements"][1] = pinned
+		end
+
 		self["selected"] = nil
-		self["total_y_size"] = 30
+		self["total_y_size"] = pinned and 60 or 30
 		self["scroll_index"] = 1
 	end
 
-	-- small checkbox + label pinned to the panel's top-right corner, e.g. a
-	-- per-panel filter switch. stored on section["header_toggle"] so the
-	-- theme handlers can recolor it. not part of elements, so pop_menu and
-	-- search ignore it (visibility still follows the parent chrome).
-	function panel_section:add_header_toggle(text, default, callback)
+	-- pinned toggle row: looks like a normal list entry with a checkbox, but
+	-- clicking flips it instead of selecting. always lays out first at a fixed
+	-- spot while visible, survives clear_items, ignored by search matching.
+	-- stored on section["pinned"] with visibility in pin_visible.
+	function panel_section:add_toggle_row(text, default, callback)
 		local holder = self["holder"]
-		local inside = self["inside"]
 
-		-- pinned to the top-right corner: checkbox at a fixed offset, label
-		-- right-aligned against it using live TextBounds (both drawing
-		-- backends refresh bounds synchronously on Text set, so this is
-		-- exact with no guessing).
+		local new_item = setmetatable({
+			["drawings"] = {},
+			["name"] = text,
+			["parent"] = self["name"],
+			["icons"] = {},
+			["is_pin"] = true,
+		}, item)
+
+		local border = drawing_proxy["new"]("Image", {
+			["Parent"] = holder,
+			["Position"] = udim2_new(0, 0, 0, 30),
+			["Size"] = udim2_new(1, 0, 0, 20),
+			["Color"] = menu["colors"]["border"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["Visible"] = false,
+		})
+		local inside = drawing_proxy["new"]("Image", {
+			["Parent"] = border,
+			["Position"] = udim2_new(0, 1, 0, 1),
+			["Size"] = udim2_new(1, -2, 1, -2),
+			["Color"] = menu["colors"]["background"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["ZIndex"] = 2,
+			["Visible"] = true,
+		})
 		local box = drawing_proxy["new"]("Image", {
 			["Parent"] = inside,
-			["Position"] = udim2_new(1, -16, 0, -7),
+			["Position"] = udim2_new(0, 4, 0, 4),
 			["Size"] = udim2_new(0, 12, 0, 12),
 			["Color"] = menu["colors"]["border"],
 			["Transparency"] = 1,
 			["Rounding"] = 4,
 			["Data"] = pixel_image_data,
+			["ZIndex"] = 4,
 			["Visible"] = true,
 		})
 		local check = drawing_proxy["new"]("Image", {
@@ -6035,6 +6114,7 @@ do
 			["Data"] = checkmark_image_data,
 			["Transparency"] = default and 0.5 or 0,
 			["Color"] = menu["colors"]["accent"],
+			["ZIndex"] = 5,
 			["Visible"] = true,
 		})
 		local label = drawing_proxy["new"]("Text", {
@@ -6045,48 +6125,23 @@ do
 			["Transparency"] = 1,
 			["Visible"] = true,
 			["Parent"] = inside,
-			["Position"] = udim2_new(1, -100, 0, -8),
+			["ZIndex"] = 4,
+			["Position"] = udim2_new(0, 21, 0, 3),
 		})
+
+		new_item["drawings"]["border"] = border
+		new_item["drawings"]["inside"] = inside
+		new_item["drawings"]["text"] = label
 
 		local handle = {
 			["value"] = default and true or false,
 			["on_change"] = signal["new"](),
+			["panel"] = self,
 			["_box"] = box,
 			["_check"] = check,
 			["_label"] = label,
+			["_item"] = new_item,
 		}
-
-		-- text drawings carry a numeric size, which the click/hover hit test
-		-- cannot read, so clicks land on this invisible square instead
-		local hit = drawing_proxy["new"]("Square", {
-			["Parent"] = inside,
-			["Position"] = udim2_new(1, -100, 0, -9),
-			["Size"] = udim2_new(0, 100, 0, 14),
-			["Transparency"] = 0,
-			["Visible"] = true,
-		})
-
-		local function layout()
-			local text = tostring(label["Text"] or "")
-			local width = #text * 7
-			local ok, measured = pcall(function()
-				return label["TextBounds"]["X"]
-			end)
-
-			if ok and type(measured) == "number" and measured > 0 then
-				width = measured
-			end
-
-			if width > 170 then
-				width = 170
-			end
-
-			label["Position"] = udim2_new(1, -(width + 22), 0, -8)
-			hit["Position"] = udim2_new(1, -(width + 22), 0, -9)
-			hit["Size"] = udim2_new(0, width + 22, 0, 14)
-		end
-
-		layout()
 
 		function handle:set(value)
 			value = value and true or false
@@ -6103,32 +6158,40 @@ do
 		function handle:set_text(new_text)
 			new_text = tostring(new_text or "")
 
-			if #new_text > 24 then
-				new_text = new_text:sub(1, 23) .. ".."
+			if #new_text > 28 then
+				new_text = new_text:sub(1, 27) .. ".."
 			end
 
 			label["Text"] = new_text
-			layout()
+			new_item["name"] = new_text
+		end
+
+		function handle:set_visible(visible)
+			self["panel"]["pin_visible"] = visible and true or false
+			self["panel"]:update_position()
 		end
 
 		local function flip()
 			handle:set(not handle["value"])
 		end
 
-		create_hover_connection(holder, box, function()
-			tween(box, { Color = menu["colors"]["highlighted"] }, circular, out, 0.17)
+		create_hover_connection(holder, border, function()
+			tween(border, { Color = menu["colors"]["highlighted"] }, circular, out, 0.17)
 		end, function()
-			tween(box, { Color = menu["colors"]["border"] }, circular, out, 0.17)
+			tween(border, { Color = menu["colors"]["border"] }, circular, out, 0.17)
 		end)
 
-		create_click_connection(holder, box, flip)
-		create_click_connection(holder, hit, flip)
+		create_click_connection(holder, border, flip)
 
 		if type(callback) == "function" then
 			create_connection(handle["on_change"], callback)
 		end
 
-		self["header_toggle"] = handle
+		self["pinned"] = new_item
+		new_item["_toggle"] = handle
+		self["pin_visible"] = true
+		self["elements"][#self["elements"] + 1] = new_item
+		self:update_position()
 
 		return handle
 	end
@@ -7593,10 +7656,10 @@ do
 							end
 						end
 
-						local header_toggle = section["header_toggle"]
+						local pinned = section["pinned"]
 
-						if header_toggle and header_toggle["_check"] then
-							header_toggle["_check"]["Color"] = color
+						if pinned and pinned["_toggle"] and pinned["_toggle"]["_check"] then
+							pinned["_toggle"]["_check"]["Color"] = color
 						end
 					end
 				end
@@ -8668,10 +8731,10 @@ do
 									end
 								end
 
-								local header_toggle = section["header_toggle"]
+								local pinned = section["pinned"]
 
-								if header_toggle and header_toggle["_box"] then
-									header_toggle["_box"]["Color"] = color
+								if pinned and pinned["_toggle"] and pinned["_toggle"]["_box"] then
+									pinned["_toggle"]["_box"]["Color"] = color
 								end
 							end
 						end
