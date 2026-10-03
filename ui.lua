@@ -603,6 +603,13 @@ do
 			makefolder(file_path)
 		end
 
+		-- shipped files that must come from their url on every run, never from
+		-- the cached copy. default.th is the built in palette, so a stale cache
+		-- means a ui rendered with last week's colors. keyed by full path.
+		local forced_refresh = {
+			[file_path .. "/themes/default.th"] = true,
+		}
+
 		local recursive_check
 
 		recursive_check = function(path, array)
@@ -615,19 +622,34 @@ do
 						makefolder(path)
 					end
 					recursive_check(path .. "/", data)
-				elseif not isfile(path) then
-					-- only download missing files, skip the rest
-					if data_type == "string" and data:find("^https?://") then
-						local content = safeHttp(data)
-						if content ~= nil then
-							writefile(path, content)
-						else
-							warn("[1336mafia.de] Failed to download (keeping missing):", path, data)
+				else
+					local exists = isfile(path)
+
+					-- download missing files, skip the rest. forced entries skip
+					-- the exists check and re-fetch even when the file is there.
+					if not exists or forced_refresh[path] then
+						if data_type == "string" and data:find("^https?://") then
+							local content = safeHttp(data)
+							if content ~= nil then
+								writefile(path, content)
+							else
+								-- keep whatever is on disk either way. a dead url
+								-- must not blank out a working local copy.
+								warn(
+									"[1336mafia.de] Failed to download (keeping "
+										.. (exists and "existing" or "missing")
+										.. "):",
+									path,
+									data
+								)
+							end
+						elseif not exists then
+							if data ~= nil then
+								writefile(path, type(data) == "function" and data() or data)
+							else
+								warn("[1336mafia.de] No data for missing file, skipping:", path)
+							end
 						end
-					elseif data ~= nil then
-						writefile(path, type(data) == "function" and data() or data)
-					else
-						warn("[1336mafia.de] No data for missing file, skipping:", path)
 					end
 				end
 			end
@@ -1153,10 +1175,10 @@ do
 		["Transparency"] = 1,
 	})
 
-	local 1336mafia_text = drawing_proxy["new"]("Text", {
+	local script_name_text = drawing_proxy["new"]("Text", {
 		["Font"] = 1,
 		["Color"] = color3_fromrgb(255, 255, 255),
-		["Text"] = getgenv().script_name or "1336mafia",
+		["Text"] = getgenv().script_name or "1336",
 		["Parent"] = logo,
 		["Position"] = udim2_new(1, 5, 0, 3),
 		["Size"] = 14,
@@ -1167,7 +1189,7 @@ do
 	local build_text = drawing_proxy["new"]("Text", {
 		["Font"] = 1,
 		["Color"] = menu["colors"]["accent"],
-		["Text"] = getgenv().script_version or "skid",
+		["Text"] = getgenv().script_version or "mafia",
 		["Parent"] = logo,
 		["Position"] = udim2_new(1, 5, 0, 19),
 		["Size"] = 14,
@@ -4493,7 +4515,7 @@ do
 		tween(frame, transparency, exponential, out, 0.18)
 		tween(inside, transparency, exponential, out, 0.18)
 		tween(logo, transparency, exponential, out, 0.18)
-		tween(1336mafia_text, transparency, exponential, out, 0.18)
+		tween(script_name_text, transparency, exponential, out, 0.18)
 		tween(build_text, transparency, exponential, out, 0.18)
 		tween(right_side, transparency, exponential, out, 0.18)
 		tween(right_side_divider, transparency, exponential, out, 0.18)
@@ -8578,7 +8600,7 @@ do
 				})["on_color_change"],
 				function(color)
 					menu["colors"]["1336mafia"] = color
-					1336mafia_text["Color"] = color
+					script_name_text["Color"] = color
 				end
 			)
 
