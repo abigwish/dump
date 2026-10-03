@@ -5270,6 +5270,311 @@ do
 		return new_section
 	end
 
+	-- > ( preview sections )
+	--
+	-- Drawing cannot render 3D, so this is a hybrid: Drawing chrome (border /
+	-- inside / label, same keys as create_section so theme + pop_menu loops pick
+	-- it up untouched) with a real ViewportFrame + ImageLabel synced under it.
+	-- game-specific cloning (wrap slices, charm assets) stays in the caller;
+	-- ui.lua only displays a Model or an asset id. colors re-sync every frame
+	-- so no theme handler patching is needed.
+
+	local preview_syncs = {}
+
+	function group:create_preview_section(tab_name, name, side, y_ratio, h_ratio)
+		local tab = self["tabs"][tab_name]
+		if not tab then
+			return nil
+		end
+
+		y_ratio = type(y_ratio) == "number" and y_ratio or 0.62
+		h_ratio = type(h_ratio) == "number" and h_ratio or 0.38
+		local x_pos = side == 2 and 0.5 or 0
+		local x_off = side == 2 and 5 or 0
+
+		local tab_frame = tab["frame"]
+
+		local section_border = drawing_proxy["new"]("Image", {
+			["Parent"] = tab_frame,
+			["Position"] = udim2_new(x_pos, x_off, y_ratio, 5),
+			["Size"] = udim2_new(0.5, -5, h_ratio, -5),
+			["Color"] = menu["colors"]["border"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["Visible"] = true,
+		})
+		local section_inside = drawing_proxy["new"]("Image", {
+			["Parent"] = section_border,
+			["Position"] = udim2_new(0, 1, 0, 0),
+			["Size"] = udim2_new(1, -2, 1, -1),
+			["Color"] = menu["colors"]["section"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["Visible"] = true,
+		})
+		local section_line = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Size"] = udim2_new(0, 9, 0, 1),
+			["Position"] = udim2_new(0, 1, 0, 0),
+			["Color"] = menu["colors"]["accent"],
+			["Transparency"] = 0.5,
+			["Filled"] = true,
+			["Visible"] = true,
+		})
+		local section_label = drawing_proxy["new"]("Text", {
+			["Color"] = menu["colors"]["accent"],
+			["Transparency"] = 0.5,
+			["Text"] = name,
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 15, 0, -8),
+			["Size"] = 12,
+			["Font"] = 1,
+			["Visible"] = true,
+		})
+		local text_bounds = section_label["TextBounds"]["X"] + 20
+		local section_line_two = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, text_bounds, 0, 0),
+			["Size"] = udim2_new(1, -(text_bounds + 1), 0, 1),
+			["Color"] = menu["colors"]["accent"],
+			["Filled"] = true,
+			["Transparency"] = 0.5,
+			["Visible"] = true,
+		})
+		local preview_text = drawing_proxy["new"]("Text", {
+			["Color"] = menu["colors"]["inactive_text"],
+			["Text"] = "nothing selected",
+			["Size"] = 12,
+			["Font"] = 1,
+			["Transparency"] = 1,
+			["Visible"] = true,
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 10, 1, -18),
+		})
+
+		local new_section = {
+			["tab"] = tab,
+			["name"] = name,
+			["elements"] = {},
+			["border"] = section_border,
+			["inside"] = section_inside,
+			["label"] = section_label,
+			["line"] = section_line,
+			["line_two"] = section_line_two,
+			["preview_text"] = preview_text,
+			["is_preview"] = true,
+		}
+
+		-- real gui, positioned under the chrome every frame. children use scale
+		-- so only the container moves.
+		local gui = nil
+		local container = nil
+		local viewport = nil
+		local vcam = nil
+		local image = nil
+		local caption = nil
+
+		pcall(function()
+			gui = create_instance("ScreenGui", {
+				["Name"] = "simon_preview_" .. tostring(name),
+				["ResetOnSpawn"] = false,
+				["IgnoreGuiInset"] = true,
+				["DisplayOrder"] = 1000,
+			})
+			gui["Parent"] = hui
+			gui["Enabled"] = false
+
+			container = create_instance("Frame", {
+				["Name"] = "box",
+				["BackgroundColor3"] = menu["colors"]["section"],
+				["BorderSizePixel"] = 0,
+			})
+			container["Parent"] = gui
+
+			viewport = create_instance("ViewportFrame", {
+				["Name"] = "view",
+				["BackgroundColor3"] = menu["colors"]["background"],
+				["BorderSizePixel"] = 0,
+				["Position"] = UDim2.new(0, 0, 0, 0),
+				["Size"] = UDim2.new(1, 0, 1, -22),
+				["LightColor"] = Color3.fromRGB(255, 255, 255),
+				["Ambient"] = Color3.fromRGB(180, 180, 180),
+				["Visible"] = false,
+			})
+			viewport["Parent"] = container
+
+			vcam = create_instance("Camera", {
+				["FieldOfView"] = 40,
+			})
+			vcam["Parent"] = viewport
+			viewport["CurrentCamera"] = vcam
+
+			image = create_instance("ImageLabel", {
+				["Name"] = "img",
+				["BackgroundTransparency"] = 1,
+				["BorderSizePixel"] = 0,
+				["Position"] = UDim2.new(0, 0, 0, 0),
+				["Size"] = UDim2.new(1, 0, 1, -22),
+				["ScaleType"] = Enum.ScaleType.Fit,
+				["Visible"] = false,
+			})
+			image["Parent"] = container
+
+			caption = create_instance("TextLabel", {
+				["Name"] = "cap",
+				["BackgroundTransparency"] = 1,
+				["Text"] = "",
+				["Font"] = Enum.Font.Code,
+				["TextSize"] = 12,
+				["TextColor3"] = Color3.fromRGB(197, 197, 197),
+				["TextTruncate"] = Enum.TextTruncate.AtEnd,
+				["Position"] = UDim2.new(0, 0, 1, -22),
+				["Size"] = UDim2.new(1, 0, 0, 22),
+				["Visible"] = true,
+			})
+			caption["Parent"] = container
+		end)
+
+		new_section["gui"] = gui
+
+		local dead = false
+
+		local function sync()
+			if dead then
+				return
+			end
+			local ok, pos, size = pcall(function()
+				return section_border["real_position"], section_border["real_size"]
+			end)
+			if not ok or not pos or not size or gui == nil or container == nil then
+				return
+			end
+			pcall(function()
+				local show = menu_open and actives["tab"] == tab and section_border["is_rendering"]
+				gui["Enabled"] = show and true or false
+				if show then
+					container["Position"] = UDim2.fromOffset(pos["X"] + 2, pos["Y"] + 11)
+					container["Size"] = UDim2.fromOffset(size["X"] - 4, size["Y"] - 13)
+					container["BackgroundColor3"] = menu["colors"]["section"]
+					viewport["BackgroundColor3"] = menu["colors"]["background"]
+					caption["TextColor3"] = menu["colors"]["active_text"]
+				end
+			end)
+		end
+
+		heartbeat[#heartbeat + 1] = sync
+		preview_syncs[#preview_syncs + 1] = new_section
+
+		function new_section:SetText(text)
+			pcall(function()
+				preview_text["Text"] = tostring(text or "")
+			end)
+			pcall(function()
+				if caption then
+					caption["Text"] = tostring(text or "")
+				end
+			end)
+		end
+
+		function new_section:SetImage(asset)
+			if type(asset) ~= "string" or #asset == 0 then
+				self:Clear()
+				return
+			end
+			pcall(function()
+				if viewport then
+					viewport["Visible"] = false
+				end
+				image["Image"] = asset
+				image["Visible"] = true
+			end)
+		end
+
+		function new_section:SetModel(model)
+			if typeof(model) ~= "Instance" then
+				return
+			end
+			pcall(function()
+				image["Visible"] = false
+				for _, child in viewport:GetChildren() do
+					if child ~= vcam then
+						child:Destroy()
+					end
+				end
+				model["Parent"] = viewport
+				pcall(function()
+					for _, d in model:GetDescendants() do
+						if d:IsA("BasePart") then
+							d["Anchored"] = true
+							d["CanCollide"] = false
+						end
+					end
+				end)
+				local ok_cf, cf, size = pcall(model.GetBoundingBox, model)
+				if ok_cf and cf and size then
+					local dist = math.clamp(math.max(size["X"], size["Y"], size["Z"]) * 1.6, 1, 20)
+					vcam["CFrame"] = CFrame.new(cf["Position"] + Vector3.new(0.6, 0.5, dist), cf["Position"])
+				else
+					vcam["CFrame"] = CFrame.new(0, 0, 3)
+				end
+				viewport["Visible"] = true
+				viewport["CurrentCamera"] = vcam
+			end)
+		end
+
+		function new_section:Clear()
+			pcall(function()
+				if image then
+					image["Visible"] = false
+					image["Image"] = ""
+				end
+				if viewport then
+					viewport["Visible"] = false
+					for _, child in viewport:GetChildren() do
+						if child ~= vcam then
+							child:Destroy()
+						end
+					end
+				end
+			end)
+			self:SetText("nothing selected")
+		end
+
+		function new_section:destroy()
+			dead = true
+			for i = 1, #preview_syncs do
+				if preview_syncs[i] == new_section then
+					table.remove(preview_syncs, i)
+					break
+				end
+			end
+			for i = 1, #heartbeat do
+				if heartbeat[i] == sync then
+					table.remove(heartbeat, i)
+					break
+				end
+			end
+			pcall(function()
+				if gui then
+					gui:Destroy()
+				end
+			end)
+			for _, drawing in new_section do
+				if type(drawing) == "table" and rawget(drawing, "Destroy") then
+					pcall(function()
+						drawing:Destroy()
+					end)
+				end
+			end
+		end
+
+		tab["sections"][name] = new_section
+
+		return new_section
+	end
+
 	-- > ( panel sections )
 
 	function panel_section:add_item(info)
@@ -9191,6 +9496,15 @@ do
 
 			for i = 1, #connections do
 				connections[i]:Disconnect()
+			end
+
+			for i = #preview_syncs, 1, -1 do
+				pcall(function()
+					if preview_syncs[i] and preview_syncs[i]["gui"] then
+						preview_syncs[i]["gui"]:Destroy()
+					end
+				end)
+				preview_syncs[i] = nil
 			end
 
 			pcall(function()
