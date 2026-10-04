@@ -34,6 +34,7 @@ local getgenv = (function()
 		return _G
 	end
 end)()
+
 local file_path = (function()
 	local ok, g = pcall(getgenv)
 	if ok and type(g) == "table" and type(g.custom_folder) == "string" and #g.custom_folder > 0 then
@@ -41,31 +42,37 @@ local file_path = (function()
 	end
 	return "1336mafia"
 end)()
+
 -- volt name check, case-insensitive + pcall-safe
 local IS_VOLT = (function()
 	local ok, name = pcall(identifyexecutor)
 	return ok and type(name) == "string" and name:lower():find("volt") ~= nil or false
 end)()
+
 -- solara/xeno check: name match, else fall back when Drawing/FS missing
 local EXEC_NAME = (function()
 	local ok, name = pcall(identifyexecutor)
 	if ok and type(name) == "string" then return name end
 	return "unknown"
 end)()
+
 local IS_SOLARA = (function()
 	local ok, n = pcall(function() return EXEC_NAME:lower() end)
 	return ok and n:find("solara") ~= nil or false
 end)()
+
 local IS_XENO = (function()
 	local ok, n = pcall(function() return EXEC_NAME:lower() end)
 	return ok and n:find("xeno") ~= nil or false
 end)()
+
 local IS_LOWEND = (function()
 	if IS_SOLARA or IS_XENO then return true end
 	if typeof(Drawing) ~= "table" or Drawing["new"] == nil then return true end
 	if typeof(getcustomasset) ~= "function" then return true end
 	return false
 end)()
+
 local cloneref = (function()
 	local orig = cloneref
 	if type(orig) ~= "function" then return function(v) return v end end
@@ -75,6 +82,7 @@ local cloneref = (function()
 		return v
 	end
 end)()
+
 local user_input_service = cloneref(game:GetService("UserInputService"))
 local get_mouse_location = user_input_service["GetMouseLocation"]
 local players_service = cloneref(game:GetService("Players"))
@@ -92,13 +100,16 @@ local hui = (function()
 		if ok2 and typeof(c) == "Instance" then return c end
 		return g
 	end
+
 	local ok3, cg = pcall(game.GetService, game, "CoreGui")
 	if ok3 and typeof(cg) == "Instance" then
 		local ok4, c2 = pcall(cloneref, cg)
 		if ok4 and typeof(c2) == "Instance" then return c2 end
 		return cg
 	end
+
 	local ok5, ps = pcall(game.GetService, game, "Players")
+
 	if ok5 and typeof(ps) == "Instance" then
 		local lp = nil
 		pcall(function() lp = ps["LocalPlayer"] end)
@@ -112,6 +123,7 @@ local hui = (function()
 	end
 	return nil
 end)()
+
 local color3_fromrgb = Color3["fromRGB"]
 local color3_lerp = color3_fromrgb()["Lerp"]
 local vector2_new = Vector2["new"]
@@ -125,6 +137,7 @@ local floor = math["floor"]
 local wait = task["wait"]
 local sqrt = math["sqrt"]
 local type = type
+
 -- base64: global, crypt, pure-lua fallback. never errors
 local base64_decode = (function()
 	local orig = base64_decode
@@ -133,16 +146,20 @@ local base64_decode = (function()
 	local function pure(s)
 		if type(s) ~= "string" then return "" end
 		s = s:gsub("%s+", ""):gsub("=", "")
+
 		local map = {}
 		for i = 1, 64 do map[b64chars:sub(i, i)] = i - 1 end
 		local out = {}
 		local bits = 0
 		local nbits = 0
+
 		for i = 1, #s do
 			local v = map[s:sub(i, i)]
+
 			if v then
 				bits = bits * 64 + v
 				nbits = nbits + 6
+
 				if nbits >= 8 then
 					nbits = nbits - 8
 					local byte = math.floor(bits / (2 ^ nbits)) % 256
@@ -151,26 +168,33 @@ local base64_decode = (function()
 				end
 			end
 		end
+
 		return table.concat(out)
 	end
+
 	return function(s)
 		if type(s) ~= "string" then return "" end
 		if type(orig) == "function" then
 			local ok, r = pcall(orig, s)
 			if ok and type(r) == "string" then return r end
 		end
+
 		if type(crisp) == "table" and type(crisp.base64) == "table" and type(crisp.base64.decode) == "function" then
 			local ok, r = pcall(crisp.base64.decode, s)
 			if ok and type(r) == "string" then return r end
 			local ok2, r2 = pcall(function() return crisp.base64.decode(s) end)
 			if ok2 and type(r2) == "string" then return r2 end
 		end
+
 		local ok3, r3 = pcall(pure, s)
+
 		if ok3 and type(r3) == "string" then return r3 end
 		return ""
 	end
 end)()
+
 -- fs shims: missing stuff degrades to safe defaults, ui never dies
+
 local isfolder = (function()
 	local orig = isfolder
 	return function(p)
@@ -180,6 +204,7 @@ local isfolder = (function()
 		return ok and r == true
 	end
 end)()
+
 local makefolder = (function()
 	local orig = makefolder
 	return function(p)
@@ -189,6 +214,7 @@ local makefolder = (function()
 		return ok
 	end
 end)()
+
 local isfile = (function()
 	local orig = isfile
 	return function(p)
@@ -198,6 +224,7 @@ local isfile = (function()
 		return ok and r == true
 	end
 end)()
+
 local readfile = (function()
 	local orig = readfile
 	return function(p)
@@ -208,6 +235,7 @@ local readfile = (function()
 		return nil
 	end
 end)()
+
 local writefile = (function()
 	local orig = writefile
 	return function(p, c)
@@ -217,6 +245,7 @@ local writefile = (function()
 		return ok
 	end
 end)()
+
 local listfiles = (function()
 	local orig = listfiles
 	return function(p)
@@ -227,6 +256,7 @@ local listfiles = (function()
 		return {}
 	end
 end)()
+
 local delfile = (function()
 	local orig = delfile
 	return function(p)
@@ -236,6 +266,7 @@ local delfile = (function()
 		return ok
 	end
 end)()
+
 local newcclosure = (function()
 	local orig = newcclosure
 	if type(orig) ~= "function" then return function(f) return f end end
@@ -245,6 +276,7 @@ local newcclosure = (function()
 		return f
 	end
 end)()
+
 local keypress = (function()
 	local orig = keypress
 	if type(orig) ~= "function" then return function(...) return nil end end
@@ -253,6 +285,7 @@ local keypress = (function()
 		return ok
 	end
 end)()
+
 local keyrelease = (function()
 	local orig = keyrelease
 	if type(orig) ~= "function" then return function(...) return nil end end
@@ -261,24 +294,29 @@ local keyrelease = (function()
 		return ok
 	end
 end)()
+
 local request = (function()
 	local orig = request
 	if type(orig) ~= "function" then orig = http_request end
 	if type(orig) ~= "function" and typeof(syn) == "table" then orig = syn["request"] end
 	if type(orig) ~= "function" then return function(...) return nil end end
+
 	return function(...)
 		local ok, r = pcall(orig, ...)
 		if ok then return r end
 		return nil
 	end
+
 end)()
 
 local shadow_image_data = base64_decode(
 	"iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAQAAABpN6lAAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAAmJLR0QA/4ePzL8AAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAHdElNRQfiAQkTIxqKm+UhAAACvElEQVR42u2dzY7aMBhFjxPHEzJQBolRq77/27XSwBCSkD/PwinS7LpBVwrfeYLjI4Ozuy6Cw+HIyHBkOMCxTiIQmYnMzEQi0S9Hz/EUePIlxDpJB58YGRiZmJlTgIKCQMkLYYmwTtLhe2509AwM6QbkFJRUbKnYEChWHGCgp6WhpoF0AzI8gYodB/bs2BDI1aYPYqKn5cIZR7oPkyejoGTLgZ+888aOEq82fRAjHRdOlEBkZGTwODwvVOx55zdH9rxSqE0fxMCVMxXQ0dHS4TwZOYENO9448osDW4La9EH01GyAhhOfBHKy9Ar4JcGeA0d2Kw5QAu3yT+fJcB7IyJdn8JUtO36sOAB0vFISKNJz7+9fgelTKBAIlGrThxEI3z743Fpf/P/GAqgF1FgAtYAaC6AWUGMB1AJqLIBaQI0FUAuosQBqATUWQC2gxgKoBdRYALWAGgugFlBjAdQCaiyAWkCNBVALqLEAagE1FkAtoMYCqAXUWAC1gBoLoBZQYwHUAmosgFpAjQVQC6ixAGoBNRZALaDGAqgF1FgAtYAaC6AWUGMB1AJqLIBaQI0FUAuosQBqATUWQC2gxgKoBdRYALWAGgugFlBjAdQCaiyAWkCNBVALqLEAagE1FkAtoMYCqAXUWAC1gBoLoBZQYwHUAmosgFpAjQVQC6ixAGoBNRZALaDGAqgF1FgAtYAaC6AWUGMB1AJqLIBaQI0nfpsi7enp1VIPI53uPriaVmfT9ORAT8eVmhJWvDZ3oea6TK5OzOkGzIz3Lc4N0K04QM0HZy609IzMRM98nyI9UQHt6ic3/3JaEkzMnsjIjYYzJdA8xejqH8403BjTDRjoqHFAx+lJZnc/qOkYmP3yD9AAkY7PJxpe7hnTT2BiAGZG2ieb3p6ILj75+LqL4O7Dq245/HoDpAjx32cQ8QtpRORenSWX2AAAABl0RVh0U29mdHdhcmUAcGFpbnQubmV0IDQuMC4xOdTWsmQAAAAASUVORK5CYII="
 )
+
 local pixel_image_data = base64_decode(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMvu8A7YAAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAA8nYBAOgDAADydgEA6AMAAFBhaW50Lk5FVCA1LjEuMgADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAACOO8FX0xe8TgAAAAxJREFUGFdj+P//PwAF/gL+pzWBhAAAAABJRU5ErkJggg=="
 )
+
 local exponential = Enum["EasingStyle"]["Exponential"]
 local circular = Enum["EasingStyle"]["Circular"]
 local quad = Enum["EasingStyle"]["Quad"]
@@ -291,6 +329,7 @@ local out = Enum["EasingDirection"]["Out"]
 local connections = {}
 local addon_data = {}
 local heartbeat = {}
+
 local flags = {
 	["keybinds_position"] = { 15, camera["ViewportSize"]["Y"] / 2 - 10 },
 	["loaded_addons"] = {},
@@ -879,6 +918,9 @@ do
 	local menu_open = true
 	local menu_tick = clock()
 	local pop_menu = nil
+	-- simple mouse unlock (ported from test/main.lua), gated by "mouse unlock 1" flag
+	local mouse_behaviour = nil
+	local mouse_icon_enabled = true
 	local old_text = ""
 	local searching = nil
 	local hud_frames = {}
@@ -892,10 +934,6 @@ do
 		["context"] = nil,
 		["panel"] = nil,
 		["tab"] = nil,
-		-- what MouseBehavior was while the menu was shut, restored on close.
-		-- lives in actives rather than a local like everything else here: this
-		-- chunk is already out of registers.
-		["original_mouse_behavior"] = nil,
 		-- executor capabilities. anything that cannot work is not built at all
 		-- rather than built and broken, so the menu never shows a dead control.
 		-- probes the real global, not the shim, since the shim always exists.
@@ -913,21 +951,6 @@ do
 		["colorpicker_hue"] = 0,
 		["colorpicker_value"] = 0,
 	}
-
-	-- > ( mouse safety )
-
-	-- this menu draws its own cursor, so the engine one goes off while it is open
-	-- and MouseBehavior goes to Default. rivals is first person and locks the
-	-- mouse to the centre of the screen, which pins our own cursor too since it
-	-- tracks GetMouseLocation. either one left stuck is an unplayable game.
-	--
-	-- two writers, both needed. pop_menu does the immediate write on toggle, and
-	-- the render step at RenderPriority.Last re-asserts every frame because
-	-- rivals re-locks from its own camera update, which runs earlier in the frame.
-	-- anything written during Heartbeat just gets stomped.
-	--
-	-- note this chunk sits on the 200 local register ceiling, so the saved value
-	-- lives in actives instead of a new local.
 
 	-- > ( drawing proxy )
 
@@ -4414,33 +4437,22 @@ do
 	local hovering = nil
 
 	pop_menu = LPH_JIT_MAX(function(a)
-		-- flip the flag first. everything below this point can throw, and a throw
-		-- used to leave the player with no mouse at all in a first person game.
-		-- the cursor restore itself is owned by the render step loop below so
-		-- there is exactly one writer and it always wins the frame.
 		menu_open = not menu_open
 
-		-- this is the bit that actually matters, and it is not MouseIconEnabled.
-		-- rivals sets MouseBehavior to LockCenter in first person, so the mouse
-		-- sits pinned to the middle of the screen. the menu draws its own cursor
-		-- off GetMouseLocation, so with LockCenter still in force that cursor
-		-- cannot move either. Default hands the mouse back to us.
-		if menu_open then
-			-- take the game's value BEFORE overwriting it. this is the only
-			-- moment it is still correct, since the render step below pins it to
-			-- Default for as long as we are open.
-			actives["original_mouse_behavior"] = user_input_service["MouseBehavior"]
-			user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
+		-- simple mouse unlock (ported from test/main.lua), gated by "mouse unlock 1" flag
+		if flags["mouse unlock 1"] then
+			local ok_behavior, current_behavior = pcall(function()
+				return user_input_service["MouseBehavior"]
+			end)
+			if menu_open or (ok_behavior and current_behavior == Enum["MouseBehavior"]["LockCenter"]) then
+				mouse_icon_enabled = menu_open
+				mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
+			else
+				mouse_behaviour = nil
+			end
 		else
-			-- closing. hand back whatever the game had, do not guess. the old
-			-- version asked "is the humanoid alive" and locked to centre when yes,
-			-- which is only right for first person and pins the mouse shut the
-			-- moment you closed the menu in third person.
-			user_input_service["MouseBehavior"] =
-				actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
+			mouse_behaviour = nil
 		end
-
-		user_input_service["MouseIconEnabled"] = not menu_open
 
 		if moving then
 			moving:Disconnect()
@@ -8496,6 +8508,15 @@ do
 				},
 			})
 
+			menu_references["mouse_unlock"] = settings_section:create_element({
+				["name"] = "mouse unlock",
+			}, {
+				["toggle"] = {
+					["default"] = true,
+					["flag"] = "mouse unlock 1",
+				},
+			})
+
 			create_connection(menu_references["notifications"]["on_toggle_change"], function(bool)
 				do_notifications = bool
 				menu["saved"] = true
@@ -8504,6 +8525,12 @@ do
 			create_connection(menu_references["hide_on_load"]["on_toggle_change"], function(bool)
 				menu["hide_on_load"] = bool
 				menu["saved"] = true
+			end)
+
+			create_connection(menu_references["mouse_unlock"]["on_toggle_change"], function(bool)
+				if not bool then
+					mouse_behaviour = nil
+				end
 			end)
 
 			settings_section:create_element({
@@ -9793,24 +9820,7 @@ do
 				end
 			end)
 
-			-- unloading while open would otherwise leave MouseBehavior on Default
-			-- with no menu left to drive it, so the camera would never lock again
 			menu_open = false
-
-			pcall(function()
-				run_service:UnbindFromRenderStep("1336mafia_rent_menu_mouse")
-			end)
-
-			pcall(function()
-				-- same rule as pop_menu's close: restore what the game had. the
-				-- LockCenter fallback here was a guess and it pinned the mouse
-				-- shut when unloading in third person.
-				user_input_service["MouseBehavior"] =
-					actives["original_mouse_behavior"] or Enum["MouseBehavior"]["Default"]
-				user_input_service["MouseIconEnabled"] = not menu_open
-			end)
-
-			actives["original_mouse_behavior"] = nil
 
 			env["getrawmetatable"] = env["_OG"]
 
@@ -9835,35 +9845,24 @@ do
 			end)
 		)
 
-		-- the mouse has to be held off the game every single frame, not just on
-		-- toggle. rivals re-locks MouseBehavior from its own camera update, which
-		-- runs before the render step, so anything written during Heartbeat gets
-		-- stomped. RenderPriority.Last is the last thing to touch input in a
-		-- frame, so this wins.
-		--
-		-- only the open branch runs. saving and restoring are both pop_menu's job:
-		-- it captures the game's value on the way in, before we overwrite it, and
-		-- hands it back on the way out. sampling from here would either read our
-		-- own Default or catch the game mid camera transition.
-		pcall(function()
-			run_service:UnbindFromRenderStep("1336mafia_rent_menu_mouse")
-		end)
+		-- simple mouse unlock loop (ported from test/main.lua), gated by "mouse unlock 1" flag
+		create_connection(
+			run_service["RenderStepped"],
+			LPH_NO_VIRTUALIZE(function()
+				if mouse_behaviour and flags["mouse unlock 1"] then
+					pcall(function()
+						user_input_service["MouseIconEnabled"] = mouse_icon_enabled
+					end)
+					pcall(function()
+						user_input_service["MouseBehavior"] = mouse_behaviour
+					end)
 
-		pcall(function()
-			run_service:BindToRenderStep(
-				"1336mafia_rent_menu_mouse",
-				Enum["RenderPriority"]["Last"]["Value"],
-				LPH_NO_VIRTUALIZE(function()
-					if menu_open then
-						user_input_service["MouseBehavior"] = Enum["MouseBehavior"]["Default"]
-						user_input_service["MouseIconEnabled"] = false
+					if not mouse_icon_enabled then
+						mouse_behaviour = nil
 					end
-					-- nothing to do when shut. the game's value is sampled by
-					-- pop_menu on the way in and handed straight back on the way
-					-- out, which is the only pair of moments that are both correct.
-				end)
-			)
-		end)
+				end
+			end)
+		)
 
 		-- >> ( data )
 
