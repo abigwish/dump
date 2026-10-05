@@ -925,6 +925,31 @@ do
 	-- LockCenter on close there traps the cursor.
 	local mouse_behaviour = nil
 	local mouse_icon_enabled = true
+	-- true when opening took ownership from a locked game (alive in-round
+	-- or behavior was LockCenter). close re-locks one-shot only from here.
+	local mouse_owned = false
+	-- alive check for the mouse gate. pf/main.lua overrides this with the
+	-- real tracker (Info.LocalPlayer.Alive, same as constantpf). the
+	-- humanoid fallback is only for games without a gate: PF must not rely
+	-- on it, its character is custom replicated.
+	local function mouse_game_alive()
+		local gate = menu["mouse_alive_gate"]
+		if type(gate) == "function" then
+			local ok, result = pcall(gate)
+			if ok then
+				return result and true or false
+			end
+		end
+		local alive = false
+		pcall(function()
+			local character = local_player and local_player["Character"]
+			local humanoid = character and character["FindFirstChildWhichIsA"](character, "Humanoid")
+			if humanoid then
+				alive = humanoid["Health"] > 0
+			end
+		end)
+		return alive
+	end
 	local old_text = ""
 	local searching = nil
 	local hud_frames = {}
@@ -4444,30 +4469,35 @@ do
 		menu_open = not menu_open
 
 		-- mouse unlock + re-lock (ported from test/main_backup.lua Window callback):
-		-- only take ownership when the game has the mouse locked (alive
-		-- in-round, or behavior already LockCenter). lobby / menu / dead:
-		-- the cursor is already free and the game owns it, so do nothing.
-		-- close re-locks one-shot only when alive, never inside the lobby.
+		-- open takes ownership only when the game has the mouse locked
+		-- (alive in-round, or behavior already LockCenter). close re-locks
+		-- one-shot only when taken + still alive, never inside the lobby.
+		-- note: the close read of MouseBehavior is useless (we forced
+		-- Default while open), so close keys off alive, like the original.
 		if flags["mouse unlock 1"] then
-			local alive = false
-			pcall(function()
-				local character = local_player and local_player["Character"]
-				local humanoid = character and character["FindFirstChildWhichIsA"](character, "Humanoid")
-				if humanoid then
-					alive = humanoid["Health"] > 0
+			if menu_open then
+				local locked = false
+				pcall(function()
+					locked = user_input_service["MouseBehavior"] == Enum["MouseBehavior"]["LockCenter"]
+				end)
+				if mouse_game_alive() or locked then
+					mouse_owned = true
+					mouse_icon_enabled = true
+					mouse_behaviour = Enum["MouseBehavior"]["Default"]
+				else
+					mouse_owned = false
+					mouse_behaviour = nil
 				end
-			end)
-			local locked = false
-			pcall(function()
-				locked = user_input_service["MouseBehavior"] == Enum["MouseBehavior"]["LockCenter"]
-			end)
-			if alive or locked then
-				mouse_icon_enabled = menu_open
-				mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
+			elseif mouse_owned and mouse_game_alive() then
+				mouse_owned = false
+				mouse_icon_enabled = false
+				mouse_behaviour = Enum["MouseBehavior"]["LockCenter"]
 			else
+				mouse_owned = false
 				mouse_behaviour = nil
 			end
 		else
+			mouse_owned = false
 			mouse_behaviour = nil
 		end
 
@@ -8546,6 +8576,7 @@ do
 
 			create_connection(menu_references["mouse_unlock"]["on_toggle_change"], function(bool)
 				if not bool then
+					mouse_owned = false
 					mouse_behaviour = nil
 				elseif menu_open then
 					-- re-enabled while open: only take ownership when the
@@ -8554,10 +8585,12 @@ do
 					pcall(function()
 						locked = user_input_service["MouseBehavior"] == Enum["MouseBehavior"]["LockCenter"]
 					end)
-					if locked then
+					if mouse_game_alive() or locked then
+						mouse_owned = true
 						mouse_icon_enabled = true
 						mouse_behaviour = Enum["MouseBehavior"]["Default"]
 					else
+						mouse_owned = false
 						mouse_behaviour = nil
 					end
 				end
@@ -9957,7 +9990,7 @@ end
 return {
 	-- bump on any api/behavior change. main.lua refuses to run below its
 	-- minimum, so a stale cached copy fails loud instead of half-working.
-	["ui_version"] = 9,
+	["ui_version"] = 10,
 	["menu"] = menu,
 	["signal"] = signal,
 	["tween"] = tween,
