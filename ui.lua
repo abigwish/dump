@@ -918,7 +918,11 @@ do
 	local menu_open = true
 	local menu_tick = clock()
 	local pop_menu = nil
-	-- mouse unlock + re-lock state (ported from test/main_backup.lua)
+	-- mouse unlock + re-lock state (ported from test/main_backup.lua
+	-- Window callback + RenderStepped loop). only touches the mouse when
+	-- the game has it locked (alive in-round / LockCenter). in lobby and
+	-- menus the cursor is already free, so leave it alone: forcing
+	-- LockCenter on close there traps the cursor.
 	local mouse_behaviour = nil
 	local mouse_icon_enabled = true
 	local old_text = ""
@@ -4440,13 +4444,29 @@ do
 		menu_open = not menu_open
 
 		-- mouse unlock + re-lock (ported from test/main_backup.lua Window callback):
-		-- open -> Default (free cursor), close -> LockCenter (fps aim back).
-		-- always re-lock on close while the flag is on. the previous
-		-- `current == LockCenter` guard never fired because opening had
-		-- already flipped behavior to Default, so the cursor stayed free.
+		-- only take ownership when the game has the mouse locked (alive
+		-- in-round, or behavior already LockCenter). lobby / menu / dead:
+		-- the cursor is already free and the game owns it, so do nothing.
+		-- close re-locks one-shot only when alive, never inside the lobby.
 		if flags["mouse unlock 1"] then
-			mouse_icon_enabled = menu_open
-			mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
+			local alive = false
+			pcall(function()
+				local character = local_player and local_player["Character"]
+				local humanoid = character and character["FindFirstChildWhichIsA"](character, "Humanoid")
+				if humanoid then
+					alive = humanoid["Health"] > 0
+				end
+			end)
+			local locked = false
+			pcall(function()
+				locked = user_input_service["MouseBehavior"] == Enum["MouseBehavior"]["LockCenter"]
+			end)
+			if alive or locked then
+				mouse_icon_enabled = menu_open
+				mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
+			else
+				mouse_behaviour = nil
+			end
 		else
 			mouse_behaviour = nil
 		end
@@ -8528,9 +8548,18 @@ do
 				if not bool then
 					mouse_behaviour = nil
 				elseif menu_open then
-					-- re-enabled while open: resume forcing the free cursor.
-					mouse_icon_enabled = true
-					mouse_behaviour = Enum["MouseBehavior"]["Default"]
+					-- re-enabled while open: only take ownership when the
+					-- game has the mouse locked. in lobby it is already free.
+					local locked = false
+					pcall(function()
+						locked = user_input_service["MouseBehavior"] == Enum["MouseBehavior"]["LockCenter"]
+					end)
+					if locked then
+						mouse_icon_enabled = true
+						mouse_behaviour = Enum["MouseBehavior"]["Default"]
+					else
+						mouse_behaviour = nil
+					end
 				end
 			end)
 
@@ -9849,6 +9878,8 @@ do
 		-- mouse unlock / re-lock loop (ported from test/main_backup.lua):
 		-- applies MouseBehavior + MouseIconEnabled every frame while open,
 		-- one-shot LockCenter on close, then releases so the game owns it.
+		-- pop_menu only arms this when the game had the mouse locked, so
+		-- lobby / menu / dead never get a forced LockCenter.
 		create_connection(
 			run_service["RenderStepped"],
 			LPH_NO_VIRTUALIZE(function()
@@ -9926,7 +9957,7 @@ end
 return {
 	-- bump on any api/behavior change. main.lua refuses to run below its
 	-- minimum, so a stale cached copy fails loud instead of half-working.
-	["ui_version"] = 8,
+	["ui_version"] = 9,
 	["menu"] = menu,
 	["signal"] = signal,
 	["tween"] = tween,
