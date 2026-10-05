@@ -918,7 +918,7 @@ do
 	local menu_open = true
 	local menu_tick = clock()
 	local pop_menu = nil
-	-- simple mouse unlock (ported from test/main.lua), gated by "mouse unlock 1" flag
+	-- mouse unlock + re-lock state (ported from test/main_backup.lua)
 	local mouse_behaviour = nil
 	local mouse_icon_enabled = true
 	local old_text = ""
@@ -4439,17 +4439,14 @@ do
 	pop_menu = LPH_JIT_MAX(function(a)
 		menu_open = not menu_open
 
-		-- simple mouse unlock (ported from test/main.lua), gated by "mouse unlock 1" flag
+		-- mouse unlock + re-lock (ported from test/main_backup.lua Window callback):
+		-- open -> Default (free cursor), close -> LockCenter (fps aim back).
+		-- always re-lock on close while the flag is on. the previous
+		-- `current == LockCenter` guard never fired because opening had
+		-- already flipped behavior to Default, so the cursor stayed free.
 		if flags["mouse unlock 1"] then
-			local ok_behavior, current_behavior = pcall(function()
-				return user_input_service["MouseBehavior"]
-			end)
-			if menu_open or (ok_behavior and current_behavior == Enum["MouseBehavior"]["LockCenter"]) then
-				mouse_icon_enabled = menu_open
-				mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
-			else
-				mouse_behaviour = nil
-			end
+			mouse_icon_enabled = menu_open
+			mouse_behaviour = menu_open and Enum["MouseBehavior"]["Default"] or Enum["MouseBehavior"]["LockCenter"]
 		else
 			mouse_behaviour = nil
 		end
@@ -8530,6 +8527,10 @@ do
 			create_connection(menu_references["mouse_unlock"]["on_toggle_change"], function(bool)
 				if not bool then
 					mouse_behaviour = nil
+				elseif menu_open then
+					-- re-enabled while open: resume forcing the free cursor.
+					mouse_icon_enabled = true
+					mouse_behaviour = Enum["MouseBehavior"]["Default"]
 				end
 			end)
 
@@ -9845,7 +9846,9 @@ do
 			end)
 		)
 
-		-- simple mouse unlock loop (ported from test/main.lua), gated by "mouse unlock 1" flag
+		-- mouse unlock / re-lock loop (ported from test/main_backup.lua):
+		-- applies MouseBehavior + MouseIconEnabled every frame while open,
+		-- one-shot LockCenter on close, then releases so the game owns it.
 		create_connection(
 			run_service["RenderStepped"],
 			LPH_NO_VIRTUALIZE(function()
@@ -9923,7 +9926,7 @@ end
 return {
 	-- bump on any api/behavior change. main.lua refuses to run below its
 	-- minimum, so a stale cached copy fails loud instead of half-working.
-	["ui_version"] = 7,
+	["ui_version"] = 8,
 	["menu"] = menu,
 	["signal"] = signal,
 	["tween"] = tween,
