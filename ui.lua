@@ -43,36 +43,6 @@ local file_path = (function()
 	return "1336mafia"
 end)()
 
--- volt name check, case-insensitive + pcall-safe
-local IS_VOLT = (function()
-	local ok, name = pcall(identifyexecutor)
-	return ok and type(name) == "string" and name:lower():find("volt") ~= nil or false
-end)()
-
--- solara/xeno check: name match, else fall back when Drawing/FS missing
-local EXEC_NAME = (function()
-	local ok, name = pcall(identifyexecutor)
-	if ok and type(name) == "string" then return name end
-	return "unknown"
-end)()
-
-local IS_SOLARA = (function()
-	local ok, n = pcall(function() return EXEC_NAME:lower() end)
-	return ok and n:find("solara") ~= nil or false
-end)()
-
-local IS_XENO = (function()
-	local ok, n = pcall(function() return EXEC_NAME:lower() end)
-	return ok and n:find("xeno") ~= nil or false
-end)()
-
-local IS_LOWEND = (function()
-	if IS_SOLARA or IS_XENO then return true end
-	if typeof(Drawing) ~= "table" or Drawing["new"] == nil then return true end
-	if typeof(getcustomasset) ~= "function" then return true end
-	return false
-end)()
-
 local cloneref = (function()
 	local orig = cloneref
 	if type(orig) ~= "function" then return function(v) return v end end
@@ -697,86 +667,40 @@ do
 		recursive_check(file_path .. "/", files)
 	end
 
-	-- > ( custom drawing )
+	-- > ( drawing backend - api.lua only. no executor branches, no lowend fallback )
 
-	drawing = (typeof(Drawing) == "table" and Drawing["new"] ~= nil and Drawing) or nil
-    LPH_NO_VIRTUALIZE(function()
-        -- backend: high-end pulls api.lua, lowend pulls shit-drawing.lua.
-        -- both cache under assets/. bad source never kills the ui.
-        local HIGH_URL = "https://raw.githubusercontent.com/abigwish/dump/main/api.lua"
-        local LOW_URL = "https://raw.githubusercontent.com/abigwish/dump/main/shit-drawing.lua"
-        local HIGH_CACHE = file_path .. "/assets/api.lua"
-        local LOW_CACHE = file_path .. "/assets/shit-drawing.lua"
-        local function try_load(content, tag)
-            if type(content) ~= "string" or #content == 0 then return nil end
-            local fn, err = loadstring(content)
-            if not fn then warn("[1336mafia.de] " .. tag .. " compile failed: " .. tostring(err)); return nil end
-            local ok, api = pcall(fn)
-            if ok and type(api) == "table" and api["new"] ~= nil then return api end
-            warn("[1336mafia.de] " .. tag .. " invalid (missing .new)")
-            return nil
-        end
-        local function try_cache(path, tag)
-            local content = readfile(path)
-            if type(content) == "string" and #content > 0 then
-                return try_load(content, tag)
-            end
-            return nil
-        end
-        local function try_url(url, tag, cache)
-            local ok, content = pcall(function()
-                return game:HttpGet(url)
-            end)
-            if not ok or type(content) ~= "string" or #content == 0 then
-                warn("[1336mafia.de] Failed to download " .. tag .. " from GitHub")
-                return nil
-            end
-            local api = try_load(content, tag)
-            if api and type(cache) == "string" then
-                writefile(cache, content)
-            end
-            return api
-        end
-        warn("[1336mafia.de] executor=" .. tostring(EXEC_NAME) .. " lowend=" .. tostring(IS_LOWEND))
-        local backend = nil
-        local api = nil
-        -- lowend = solara/xeno name or no Drawing around
-        if IS_LOWEND then
-            api = try_cache(LOW_CACHE, "cache shit-drawing.lua")
-            if api then backend = "cache shit-drawing.lua" end
-            if not api then
-                api = try_url(LOW_URL, "github shit-drawing.lua", LOW_CACHE)
-                if api then backend = "github shit-drawing.lua" end
-            end
-            if not api then
-                api = try_url(HIGH_URL, "github api.lua (fallback)", nil)
-                if api then backend = "github api.lua (fallback)" end
-            end
-        else
-            api = try_cache(HIGH_CACHE, "cache api.lua")
-            if api then backend = "cache api.lua" end
-            if not api then
-                api = try_url(HIGH_URL, "github api.lua", HIGH_CACHE)
-                if api then backend = "github api.lua" end
-            end
-            if not api then
-                api = try_url(LOW_URL, "github shit-drawing.lua (fallback)", nil)
-                if api then backend = "github shit-drawing.lua (fallback)" end
-            end
-        end
-        if api then
-            drawing = api
-        elseif type(drawing) ~= "table" or drawing["new"] == nil then
-            if typeof(Drawing) == "table" and Drawing["new"] ~= nil then drawing = Drawing end
-        end
-        if drawing == nil then
-            warn("[1336mafia.de] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
-        elseif backend ~= nil then
-            warn("[1336mafia.de] drawing backend: " .. backend)
-        else
-            warn("[1336mafia.de] drawing backend: native Drawing")
-        end
-    end)()
+	drawing = (function()
+		local function try_load(content)
+			if type(content) ~= "string" or #content == 0 then return nil end
+			local fn, err = loadstring(content)
+			if not fn then
+				warn("[1336mafia.de] api.lua compile failed: " .. tostring(err))
+				return nil
+			end
+			local ok, api = pcall(fn)
+			if ok and type(api) == "table" and api["new"] ~= nil then return api end
+			return nil
+		end
+
+		local cache = file_path .. "/assets/api.lua"
+		local api = try_load(readfile(cache))
+
+		if api == nil then
+			local ok, body = pcall(function()
+				return game:HttpGet("https://raw.githubusercontent.com/abigwish/dump/main/api.lua")
+			end)
+			if ok and type(body) == "string" and #body > 0 then
+				api = try_load(body)
+				if api ~= nil then writefile(cache, body) end
+			end
+		end
+
+		if api ~= nil then return api end
+		if typeof(Drawing) == "table" and Drawing["new"] ~= nil then return Drawing end
+		return nil
+	end)()
+
+	assert(drawing ~= nil, "[1336mafia.de] No Drawing backend (api.lua + native Drawing missing)")
 
 	getgenv()["fake_drawing"] = drawing
 
@@ -954,7 +878,7 @@ do
 	local searching = nil
 	local hud_frames = {}
 
-	local actives = {
+	local actives: any = {
 		["colorpicker"] = nil,
 		["dropdown"] = nil,
 		["settings"] = nil,
@@ -984,45 +908,10 @@ do
 	-- > ( drawing proxy )
 
 	drawing_proxy = {}
-	-- volt path, nil-safe
-	local create1 = (IS_LOWEND and (type(drawing) == "table" and drawing["new"])) or (IS_VOLT and (typeof(Drawing) == "table" and Drawing["new"]) or (type(drawing) == "table" and drawing["new"])) or (typeof(Drawing) == "table" and Drawing["new"]) or (type(drawing) == "table" and drawing["new"])
-	assert(create1 ~= nil, "[1336mafia.de] No Drawing available (github api.lua + shit-drawing.lua + native Drawing all missing)")
+	local create1 = drawing["new"]
+	assert(create1 ~= nil, "[1336mafia.de] Drawing backend missing .new")
 
-	drawing_proxy.new = false -- Volt uses archive (non-AWP) text rendering, no +2 size bump
-			and LPH_NO_VIRTUALIZE(function(class, properties)
-				local object = create1(class)
-
-				local proxy = setmetatable({
-					["position"] = udim2_new(0, 0, 0, 0),
-					["real_position"] = vector2_new(0, 0),
-					["size"] = class == "Text" and 12 or udim2_new(0, 0, 0, 0),
-					["real_size"] = class == "Text" and 12 or vector2_new(0, 0),
-					["object"] = object,
-					["children"] = {},
-					["parent"] = false,
-					["is_rendering"] = false,
-					["skip"] = class == "Circle",
-					["visible"] = false,
-					["destroy"] = function()
-						object:Destroy()
-					end,
-				}, drawing_proxy)
-
-				local size = properties["Size"]
-				if size and type(size) == "number" then
-					properties["Size"] = size + 2
-				end
-
-				local z_index = properties["ZIndex"]
-				properties["ZIndex"] = z_index and z_index + 20 or 20
-
-				for property, value in properties do
-					proxy[property] = value
-				end
-
-				return proxy
-			end)
-		or LPH_NO_VIRTUALIZE(function(class, properties)
+	drawing_proxy.new = LPH_NO_VIRTUALIZE(function(class, properties)
 			local object = create1(class)
 
 			local proxy = setmetatable({
@@ -1419,6 +1308,28 @@ do
 		["ZIndex"] = 1002,
 		["Transparency"] = 1,
 	})
+
+	-- menu resize handle: three thin accent steps tucked inside the
+	-- bottom-right corner (never touching the border ring). the click
+	-- precheck in handle_click uses a generous 24px corner rect.
+
+	menu["resize_lines"] = {}
+	for _, line in {
+		{ ["x"] = -13, ["y"] = -5, ["w"] = 11 },
+		{ ["x"] = -10, ["y"] = -8, ["w"] = 8 },
+		{ ["x"] = -7, ["y"] = -11, ["w"] = 5 },
+	} do
+		menu["resize_lines"][#menu["resize_lines"] + 1] = drawing_proxy["new"]("Square", {
+			["Parent"] = frame,
+			["Position"] = udim2_new(1, line["x"], 1, line["y"]),
+			["Size"] = udim2_new(0, line["w"], 0, 2),
+			["Color"] = menu["colors"]["accent"],
+			["Filled"] = true,
+			["Transparency"] = 1,
+			["ZIndex"] = 950,
+			["Visible"] = true,
+		})
+	end
 
 	-- > ( keybinds )
 
@@ -2518,6 +2429,11 @@ do
 				create_click_connection(search_out, text_click, function()
 					stop_search()
 					stop_typing()
+					if element["_multi_sub"] and element["section"] and element["section"]["open_sub"] then
+						pcall(function()
+							element["section"]:open_sub(element["_multi_sub"])
+						end)
+					end
 					if not tab then
 						for name, group in menu["groups"] do
 							for name, potential_tab in group["tabs"] do
@@ -2884,7 +2800,7 @@ do
 	})
 
 	local keybind_section = nil
-	local copied = {}
+	local copied: any = {}
 
 	local close_keybind = function()
 		local position = keybind_border["real_position"]
@@ -3851,6 +3767,73 @@ do
 		tween(actives["panel"]["search_text"], { Color = menu["colors"]["active_text"] }, circular, out, 0.15)
 	end
 
+	menu["recalc_all_scrolls"] = function()
+		for _, group in menu["groups"] do
+			local tabs = group["tabs"]
+			if tabs then
+				for _, tab in tabs do
+					local sections = tab["sections"]
+					if sections then
+						for _, section in sections do
+							if section["side"] and type(section["recalculate_scroll"]) == "function" then
+								pcall(function()
+									section:recalculate_scroll()
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	menu["apply_menu_size"] = function(size)
+		frame["Size"] = size
+		drag_frame["Size"] = size
+		menu["custom_size"] = size
+		menu["recalc_all_scrolls"]()
+	end
+
+	menu["start_menu_resize"] = function()
+		if not menu_open then
+			return
+		end
+		local start_size = frame["real_size"]
+		local start_mouse = get_mouse_location(user_input_service)
+		local end_resize = nil
+		moving = create_connection(mouse["Move"], function()
+			if not menu_open or not frame["is_rendering"] then
+				if moving then
+					moving:Disconnect()
+					moving = nil
+				end
+				if end_resize then
+					end_resize:Disconnect()
+					end_resize = nil
+				end
+				return
+			end
+			local m = get_mouse_location(user_input_service)
+			local viewport = camera["ViewportSize"]
+			local need = menu["min_size"] or { 480, 360 }
+			local w = clamp(start_size["X"] + (m["X"] - start_mouse["X"]), need[1], viewport["X"] - 20)
+			local h = clamp(start_size["Y"] + (m["Y"] - start_mouse["Y"]), need[2], viewport["Y"] - 20)
+			menu["apply_menu_size"](udim2_new(0, w, 0, h))
+		end)
+		end_resize = create_connection(user_input_service["InputEnded"], function(input)
+			if input["UserInputType"] == Enum["UserInputType"]["MouseButton1"] then
+				if moving then
+					moving:Disconnect()
+					moving = nil
+				end
+				if end_resize then
+					end_resize:Disconnect()
+					end_resize = nil
+				end
+			end
+		end)
+	end
+
 	local handle_click = LPH_JIT_MAX(function(_, state, input)
 		if moving then
 			moving:Disconnect()
@@ -3895,6 +3878,22 @@ do
 		local mouse_position = get_mouse_location(user_input_service)
 		local mouse_position_x = mouse_position["X"]
 		local mouse_position_y = mouse_position["Y"]
+
+		if menu_open and frame["is_rendering"] then
+			local frame_position = frame["real_position"]
+			local frame_size = frame["real_size"]
+			local hit_x = frame_position["X"] + frame_size["X"] - 24
+			local hit_y = frame_position["Y"] + frame_size["Y"] - 24
+
+			if
+				(mouse_position_x > hit_x and mouse_position_x < hit_x + 24)
+				and (mouse_position_y > hit_y and mouse_position_y < hit_y + 24)
+			then
+				menu["start_menu_resize"]()
+
+				return
+			end
+		end
 
 		if actives["dropdown"] then
 			local border = actives["dropdown"]["drawings"]["dropdown_border"]
@@ -4482,7 +4481,9 @@ do
 				end)
 				if mouse_game_alive() or locked then
 					mouse_owned = true
-					mouse_icon_enabled = true
+					-- unlocked behavior, but the OS cursor stays hidden:
+					-- the custom cursor is the only visible one.
+					mouse_icon_enabled = false
 					mouse_behaviour = Enum["MouseBehavior"]["Default"]
 				else
 					mouse_owned = false
@@ -4601,6 +4602,13 @@ do
 						tween(section["inside"], transparency, exponential, out, 0.18)
 						tween(section["label"], half_t, exponential, out, 0.18)
 						tween(section["line"], half_t, exponential, out, 0.18)
+
+						local multi_fade = section["_multi_fade"]
+						if multi_fade then
+							for i = 1, #multi_fade do
+								tween(multi_fade[i], half_t, exponential, out, 0.18)
+							end
+						end
 
 						local search_border = section["search_border"]
 
@@ -4885,8 +4893,16 @@ do
 			end
 		end
 
-		local size = current_y_offset > 405 and udim2_new(0, 575, 0, 450 + (current_y_offset - 405))
-			or udim2_new(0, 575, 0, 450)
+		local need_w, need_h = 480, math.max(360, current_y_offset + 16)
+		menu["min_size"] = { need_w, need_h }
+		local custom = menu["custom_size"]
+		local size
+		if custom then
+			size = udim2_new(0, math.max(custom["X"]["Offset"], need_w), 0, math.max(custom["Y"]["Offset"], need_h))
+		else
+			size = current_y_offset > 405 and udim2_new(0, 575, 0, 450 + (current_y_offset - 405))
+				or udim2_new(0, 575, 0, 450)
+		end
 		drag_frame["Size"] = size
 		frame["Size"] = size
 	end
@@ -5113,6 +5129,345 @@ do
 	local section = {}
 	section["__index"] = section
 
+	-- per-tab column order for regular sections. creation inserts sorted by
+	-- the y_position hint (stable); user swaps rearrange the lists after
+	-- that. preview / panel sections keep their absolute geometry.
+
+	menu["register_section"] = function(tab, new_section)
+		local col = tab["col_order"]
+		if not col then
+			col = { [1] = {}, [2] = {} }
+			tab["col_order"] = col
+		end
+		local side = new_section["side"] == 2 and 2 or 1
+		local list = col[side]
+		local hint = new_section["_order_hint"] or 0
+		if tab["_arranged"] then
+			list[#list + 1] = new_section
+			return
+		end
+		local placed = false
+		for i = 1, #list do
+			if hint < (list[i]["_order_hint"] or 0) then
+				table.insert(list, i, new_section)
+				placed = true
+				break
+			end
+		end
+		if not placed then
+			list[#list + 1] = new_section
+		end
+	end
+
+	-- restack a tab's regular sections into their column slots. heights
+	-- shrink-to-fit when a column oversubscribes so boxes can never spill
+	-- past the tab; shrunken sections scroll their content instead.
+
+	menu["normalize_column"] = function(tab, list)
+		-- normalize from the original size hints, never from the live _h:
+		-- shrinking is idempotent and boxes grow back when room frees up.
+		-- without this a removed section left its neighbors shrunken
+		-- forever, scrolling content that fits with room to spare.
+		local total = 0
+		for i = 1, #list do
+			total += list[i]["_h_hint"] or list[i]["_h"] or 0
+		end
+		if total <= 1 or total <= 0 then
+			for i = 1, #list do
+				local hint = list[i]["_h_hint"]
+				if hint then
+					list[i]["_h"] = hint
+				end
+			end
+			return
+		end
+		-- floors first so no box degenerates into an unusable sliver;
+		-- anything that still cannot fit scrolls instead of spilling.
+		local n = #list
+		local tab_h = tab["frame"]["real_size"]["Y"]
+		if type(tab_h) ~= "number" or tab_h < 1 then
+			tab_h = 400
+		end
+		local min_h = 54 / tab_h
+		if n * min_h >= 1 then
+			local factor = 1 / total
+			for i = 1, #list do
+				list[i]["_h"] = (list[i]["_h_hint"] or list[i]["_h"] or 0) * factor
+			end
+			return
+		end
+		local rest = 1 - n * min_h
+		for i = 1, #list do
+			list[i]["_h"] = min_h + rest * ((list[i]["_h_hint"] or list[i]["_h"] or 0) / total)
+		end
+	end
+
+	menu["section_slot_geometry"] = function(side, h, y)
+		return udim2_new(side == 1 and 0 or 0.5, side == 1 and 0 or 5, y, y ~= 0 and 10 or 0),
+			udim2_new(0.5, -5, h, y ~= 0 and -10 or 0)
+	end
+
+	menu["layout_tab_sections"] = function(tab, animate)
+		local col = tab["col_order"]
+		if not col then
+			return
+		end
+		for side = 1, 2 do
+			local list = col[side]
+			menu["normalize_column"](tab, list)
+			local y = 0
+			for i = 1, #list do
+				local sec = list[i]
+				sec["_side"] = side
+				sec["side"] = side
+				local pos, size = menu["section_slot_geometry"](side, sec["_h"] or 0, y)
+				if animate then
+					tween(sec["border"], { ["tween_position"] = pos, ["tween_size"] = size }, circular, out, 0.2)
+				else
+					sec["border"]["Position"] = pos
+					sec["border"]["Size"] = size
+				end
+				y += sec["_h"] or 0
+			end
+		end
+	end
+
+	-- drag a section by its title bar and drop it on another section to
+	-- swap their places (gamesense-style rearranging). heights travel with
+	-- the slots and columns shrink-to-fit, so nothing can ever overflow.
+
+	menu["raise_section"] = function(sec, delta)
+		local function bump(proxy)
+			pcall(function()
+				proxy["ZIndex"] = proxy["object"]["ZIndex"] + delta
+			end)
+		end
+		bump(sec["border"])
+		bump(sec["inside"])
+		bump(sec["label"])
+		bump(sec["line"])
+		bump(sec["line_two"])
+		bump(sec["holder"])
+		if sec["_scroll_bar"] then
+			bump(sec["_scroll_bar"])
+		end
+		if sec["_scroll_thumb"] then
+			bump(sec["_scroll_thumb"])
+		end
+		if sec["_drag_strip"] then
+			bump(sec["_drag_strip"])
+		end
+		if sec["_multi_tabs"] then
+			for i = 1, #sec["_multi_tabs"] do
+				local entry = sec["_multi_tabs"][i]
+				bump(entry["text"])
+				bump(entry["hit"])
+			end
+			if sec["_multi_bar"] then
+				bump(sec["_multi_bar"])
+			end
+		end
+		for i = 1, #sec["elements"] do
+			local element = sec["elements"][i]
+			bump(element["frame"])
+			for _, drawing in element["drawings"] do
+				bump(drawing)
+			end
+		end
+	end
+
+	-- per-drawing show target, same mapping as the menu open tween so a
+	-- faded-in row looks exactly like a normally shown one.
+	menu["show_element_drawings"] = function(element, duration)
+		for key, drawing in element["drawings"] do
+			local target = transparency_tables.show
+			if key == "slider_fill" or key == "slider_line" then
+				target = transparency_tables.half
+			elseif key == "checkmark" then
+				target = flags[element["toggle_flag"]] and transparency_tables.half or transparency_tables.hide
+			elseif key == "colorpicker_transparency" then
+				target = { ["Transparency"] = -flags[element["transparency_flag"]] + 1 }
+			end
+			tween(drawing, target, exponential, out, duration or 0.18)
+		end
+	end
+
+	menu["hide_element_drawings"] = function(element, duration)
+		for _, drawing in element["drawings"] do
+			if duration and duration > 0 then
+				tween(drawing, transparency_tables.hide, exponential, out, duration)
+			else
+				drawing["Transparency"] = 0
+			end
+		end
+	end
+
+	menu["swap_sections"] = function(tab, a, b)
+		local col = tab["col_order"]
+		if not col then
+			return
+		end
+		local sa, ia, sb, ib
+		for side = 1, 2 do
+			local list = col[side]
+			for i = 1, #list do
+				if list[i] == a then
+					sa, ia = side, i
+				end
+				if list[i] == b then
+					sb, ib = side, i
+				end
+			end
+		end
+		if not sa or not sb then
+			return
+		end
+		col[sa][ia], col[sb][ib] = col[sb][ib], col[sa][ia]
+		tab["_arranged"] = true
+	end
+
+	menu["start_section_drag"] = function(sec)
+		local tab = sec["tab"]
+		if not tab or not menu_open then
+			return
+		end
+		local col = tab["col_order"]
+		if not col then
+			return
+		end
+		-- freeze in-flight slot tweens so the drag owns the border: kill
+		-- their ticks and snap to the slot (pending tween completions then
+		-- rewrite identical values, so nothing jumps afterwards).
+		pcall(function()
+			for side = 1, 2 do
+				local list = col[side]
+				for i = 1, #list do
+					local border = list[i]["border"]
+					for _, prop in { "tween_position", "tween_size" } do
+						local set = active_tweens[prop]
+						local tick = set and set[border]
+						if tick then
+							for j = #heartbeat, 1, -1 do
+								if heartbeat[j] == tick then
+									remove(heartbeat, j)
+								end
+							end
+							set[border] = nil
+						end
+					end
+				end
+			end
+		end)
+		menu["layout_tab_sections"](tab, false)
+		local start_mouse = get_mouse_location(user_input_service)
+		local border_start = sec["border"]["real_position"]
+		local tab_position = tab["frame"]["real_position"]
+		local grab_dx = start_mouse["X"] - border_start["X"]
+		local grab_dy = start_mouse["Y"] - border_start["Y"]
+		local dragging = false
+		local target = nil
+		local end_drag = nil
+
+		local function set_highlight(sec2, on)
+			pcall(function()
+				sec2["border"]["Color"] = on and menu["colors"]["highlighted"] or menu["colors"]["border"]
+			end)
+		end
+
+		local function finish(commit)
+			if moving then
+				moving:Disconnect()
+				moving = nil
+			end
+			if end_drag then
+				end_drag:Disconnect()
+				end_drag = nil
+			end
+			menu["raise_section"](sec, -500)
+			if target then
+				set_highlight(target, false)
+				target = nil
+			end
+			if commit and dragging then
+				local drop = nil
+				local m = get_mouse_location(user_input_service)
+				for side = 1, 2 do
+					local list = col[side]
+					for i = 1, #list do
+						local cand = list[i]
+						if cand ~= sec and cand["border"]["is_rendering"] then
+							local p = cand["border"]["real_position"]
+							local s = cand["border"]["real_size"]
+							if m["X"] > p["X"] and m["X"] < p["X"] + s["X"] and m["Y"] > p["Y"] and m["Y"] < p["Y"] + s["Y"] then
+								drop = cand
+								break
+							end
+						end
+					end
+					if drop then
+						break
+					end
+				end
+				if drop then
+					menu["swap_sections"](tab, sec, drop)
+				end
+			end
+			menu["layout_tab_sections"](tab, true)
+			delay(0.25, function()
+				pcall(menu["recalc_all_scrolls"])
+			end)
+		end
+
+		menu["raise_section"](sec, 500)
+		moving = create_connection(mouse["Move"], function()
+			if not menu_open or not sec["border"]["is_rendering"] then
+				finish(false)
+				return
+			end
+			local m = get_mouse_location(user_input_service)
+			if not dragging then
+				if math.abs(m["X"] - start_mouse["X"]) + math.abs(m["Y"] - start_mouse["Y"]) < 4 then
+					return
+				end
+				dragging = true
+			end
+			sec["border"]["Position"] = udim2_new(0, m["X"] - grab_dx - tab_position["X"], 0, m["Y"] - grab_dy - tab_position["Y"])
+			local new_target = nil
+			for side = 1, 2 do
+				local list = col[side]
+				for i = 1, #list do
+					local cand = list[i]
+					if cand ~= sec and cand["border"]["is_rendering"] then
+						local p = cand["border"]["real_position"]
+						local s = cand["border"]["real_size"]
+						if m["X"] > p["X"] and m["X"] < p["X"] + s["X"] and m["Y"] > p["Y"] and m["Y"] < p["Y"] + s["Y"] then
+							new_target = cand
+							break
+						end
+					end
+				end
+				if new_target then
+					break
+				end
+			end
+			if new_target ~= target then
+				if target then
+					set_highlight(target, false)
+				end
+				target = new_target
+				if target then
+					set_highlight(target, true)
+				end
+			end
+		end)
+		end_drag = create_connection(user_input_service["InputEnded"], function(input)
+			local t = input["UserInputType"]
+			if t == Enum["UserInputType"]["MouseButton1"] or t == Enum["UserInputType"]["Touch"] then
+				finish(true)
+			end
+		end)
+	end
+
 	function group:create_section(tab_name, name, side, size, y_position)
 		local tab = self["tabs"][tab_name]
 		if not tab then
@@ -5124,7 +5479,11 @@ do
 			["name"] = name,
 			["side"] = side,
 			["size"] = size,
+			["_h"] = size,
+			["_h_hint"] = size,
+			["_order_hint"] = y_position or 0,
 			["total_y_size"] = 10,
+			["scroll_index"] = 1,
 			["elements"] = {},
 		}, section)
 
@@ -5206,9 +5565,399 @@ do
 		new_section["line"] = section_line
 		new_section["holder"] = element_holder
 
+		-- title-bar drag strip (same invisible pattern as element_holder,
+		-- tinted the section color so it blends in any case).
+		local drag_strip = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 0, 0, 0),
+			["Size"] = udim2_new(1, 0, 0, 10),
+			["Color"] = menu["colors"]["section"],
+			["Transparency"] = 0,
+			["Filled"] = true,
+			["Visible"] = true,
+		})
+		new_section["_drag_strip"] = drag_strip
+		create_click_connection(section_inside, drag_strip, function()
+			menu["start_section_drag"](new_section)
+		end)
+
 		tab["sections"][name] = new_section
+		menu["register_section"](tab, new_section)
+		new_section:init_scroll_ui()
 
 		return new_section
+	end
+
+	-- multi-section: one box in the tab layout holding several switchable
+	-- sub-pages (constantpf-style: Local / 3D / Third-Person). only the
+	-- container takes a layout slot; sub-pages share its box and swap
+	-- element visibility, so scroll / resize / swap / search keep working
+	-- untouched. returns the sub array plus the container, same shape as
+	-- the reference (MultiSection.Sections, MultiSection).
+	-- usage:
+	--   local subs, box = group:create_multi_section("tab", "others", 2, 0.5, 0,
+	--     { "local", "3d", "third-person" })
+	--   subs[1]:create_element({ ["name"] = "local chams" }, { ["toggle"] = {...} })
+
+	function group:create_multi_section(tab_name, name, side, size, y_position, sub_names)
+		local tab = self["tabs"][tab_name]
+		if not tab then
+			return nil
+		end
+		if type(sub_names) ~= "table" or #sub_names < 1 then
+			return nil
+		end
+
+		local new_section = setmetatable({
+			["tab"] = tab,
+			["name"] = name,
+			["side"] = side,
+			["size"] = size,
+			["_h"] = size,
+			["_h_hint"] = size,
+			["_order_hint"] = y_position or 0,
+			["total_y_size"] = 32,
+			["_content_y0"] = 32,
+			["_multi_active"] = 1,
+			["scroll_index"] = 1,
+			["elements"] = {},
+		}, section)
+
+		local tab_frame = tab["frame"]
+		local y_position = y_position or 0
+
+		local section_border = drawing_proxy["new"]("Image", {
+			["Parent"] = tab_frame,
+			["Position"] = udim2_new(
+				side == 1 and 0 or 0.5,
+				side == 1 and 0 or 5,
+				y_position,
+				y_position ~= 0 and 10 or 0
+			),
+			["Size"] = udim2_new(0.5, -5, size, y_position ~= 0 and -10 or 0),
+			["Color"] = menu["colors"]["border"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["ZIndex"] = 2,
+			["Visible"] = true,
+		})
+		local section_inside = drawing_proxy["new"]("Image", {
+			["Parent"] = section_border,
+			["Position"] = udim2_new(0, 1, 0, 0),
+			["Size"] = udim2_new(1, -2, 1, -1),
+			["Color"] = menu["colors"]["section"],
+			["Transparency"] = 1,
+			["Rounding"] = 4,
+			["Data"] = pixel_image_data,
+			["ZIndex"] = 3,
+			["Visible"] = true,
+		})
+		local section_line = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Size"] = udim2_new(0, 9, 0, 1),
+			["Position"] = udim2_new(0, 1, 0, 0),
+			["Color"] = menu["colors"]["accent"],
+			["Transparency"] = 0.5,
+			["Filled"] = true,
+			["ZIndex"] = 4,
+			["Visible"] = true,
+		})
+		local section_label = drawing_proxy["new"]("Text", {
+			["Color"] = menu["colors"]["accent"],
+			["Transparency"] = 0.5,
+			["Text"] = name,
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 15, 0, -8),
+			["Size"] = 12,
+			["Font"] = 1,
+			["ZIndex"] = 4,
+			["Visible"] = true,
+		})
+		local text_bounds = section_label["TextBounds"]["X"] + 20
+		local section_line_two = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, text_bounds, 0, 0),
+			["Size"] = udim2_new(1, -(text_bounds + 1), 0, 1),
+			["Color"] = menu["colors"]["accent"],
+			["Filled"] = true,
+			["Transparency"] = 0.5,
+			["ZIndex"] = 4,
+			["Visible"] = true,
+		})
+		local element_holder = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 10, 0, 10),
+			["Size"] = udim2_new(1, -20, 1, -20),
+			["Transparency"] = 0,
+			["Filled"] = true,
+			["Visible"] = true,
+		})
+
+		new_section["border"] = section_border
+		new_section["line_two"] = section_line_two
+		new_section["inside"] = section_inside
+		new_section["label"] = section_label
+		new_section["line"] = section_line
+		new_section["holder"] = element_holder
+
+		local drag_strip = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, 0, 0, 0),
+			["Size"] = udim2_new(1, 0, 0, 10),
+			["Color"] = menu["colors"]["section"],
+			["Transparency"] = 0,
+			["Filled"] = true,
+			["Visible"] = true,
+		})
+		new_section["_drag_strip"] = drag_strip
+		create_click_connection(section_inside, drag_strip, function()
+			menu["start_section_drag"](new_section)
+		end)
+
+		tab["sections"][name] = new_section
+		menu["register_section"](tab, new_section)
+		new_section:init_scroll_ui()
+
+		-- sub-page tab strip, tucked between the title bar (0-10) and the
+		-- content origin (32). rows can never overlap it: slot_map starts
+		-- at _content_y0.
+		local multi_tabs = {}
+		local multi_fade = {}
+		local cursor_x = 10
+		for i = 1, #sub_names do
+			local sub_name = sub_names[i]
+			local is_first = i == 1
+			local tab_text = drawing_proxy["new"]("Text", {
+				["Color"] = is_first and menu["colors"]["accent"] or menu["colors"]["inactive_text"],
+				["Transparency"] = 0.5,
+				["Text"] = sub_name,
+				["Parent"] = section_inside,
+				["Position"] = udim2_new(0, cursor_x, 0, 12),
+				["Size"] = 12,
+				["Font"] = 1,
+				["ZIndex"] = 4,
+				["Visible"] = true,
+			})
+			local tab_width = tab_text["TextBounds"]["X"]
+			local tab_hit = drawing_proxy["new"]("Square", {
+				["Parent"] = section_inside,
+				["Position"] = udim2_new(0, cursor_x - 5, 0, 10),
+				["Size"] = udim2_new(0, tab_width + 10, 0, 18),
+				["Transparency"] = 0,
+				["Filled"] = true,
+				["ZIndex"] = 5,
+				["Visible"] = true,
+			})
+			multi_fade[#multi_fade + 1] = tab_text
+			multi_tabs[#multi_tabs + 1] = {
+				["name"] = sub_name,
+				["text"] = tab_text,
+				["hit"] = tab_hit,
+				["x"] = cursor_x,
+				["w"] = tab_width,
+				["active"] = is_first,
+			}
+			local tab_index = i
+			create_click_connection(section_inside, tab_hit, function()
+				new_section:open_sub(tab_index)
+			end)
+			create_hover_connection(section_inside, tab_hit, function()
+				if not multi_tabs[tab_index]["active"] then
+					tween(tab_text, { ["Color"] = menu["colors"]["highlighted"] }, circular, out, 0.15)
+				end
+			end, function()
+				if not multi_tabs[tab_index]["active"] then
+					tween(tab_text, { ["Color"] = menu["colors"]["inactive_text"] }, circular, out, 0.15)
+				end
+			end)
+			cursor_x += tab_width + 16
+		end
+		-- one shared indicator that slides between sub-tabs (same beat as
+		-- the main tab_line when switching menu tabs).
+		local multi_bar = drawing_proxy["new"]("Square", {
+			["Parent"] = section_inside,
+			["Position"] = udim2_new(0, multi_tabs[1]["x"], 0, 26),
+			["Size"] = udim2_new(0, multi_tabs[1]["w"], 0, 1),
+			["Color"] = menu["colors"]["accent"],
+			["Filled"] = true,
+			["Transparency"] = 0.5,
+			["ZIndex"] = 4,
+			["Visible"] = true,
+		})
+		multi_fade[#multi_fade + 1] = multi_bar
+		new_section["_multi_tabs"] = multi_tabs
+		new_section["_multi_fade"] = multi_fade
+		new_section["_multi_bar"] = multi_bar
+
+		function new_section:open_sub(index)
+			local subs = self["_multi_subs"]
+			if not subs or #subs < 1 then
+				return
+			end
+			if type(index) == "string" then
+				for i = 1, #subs do
+					if subs[i]["name"] == index then
+						index = i
+						break
+					end
+				end
+				if type(index) == "string" then
+					return
+				end
+			end
+			index = clamp(floor(index or 1), 1, #subs)
+			if index == self["_multi_active"] then
+				return
+			end
+			self["_multi_active"] = index
+			local tabs = self["_multi_tabs"]
+			if tabs then
+				for i = 1, #tabs do
+					local entry = tabs[i]
+					local is_active = i == index
+					entry["active"] = is_active
+					tween(
+						entry["text"],
+						{ ["Color"] = is_active and menu["colors"]["accent"] or menu["colors"]["inactive_text"] },
+						circular,
+						out,
+						0.15
+					)
+				end
+				local current = tabs[index]
+				if current and self["_multi_bar"] then
+					tween(self["_multi_bar"], {
+						["tween_position"] = udim2_new(0, current["x"], 0, 26),
+						["tween_size"] = udim2_new(0, current["w"], 0, 1),
+					}, circular, out, 0.2)
+				end
+			end
+			-- old rows fade out fast (frames stay up for the 0.12s so the
+			-- fade is visible), new rows snap to exact slots hidden and
+			-- cascade in, shared rows glide between slots. nothing ever
+			-- draws off-slot, so no row leaves the box mid-switch.
+			local elements = self["elements"]
+			local entering = {}
+			for i = 1, #elements do
+				local element = elements[i]
+				local owner = element["_multi_sub"]
+				local will_show = owner == nil or owner == index
+				local was_shown = element["visible"]
+				if will_show then
+					element["visible"] = true
+					if not was_shown then
+						entering[element] = true
+						menu["hide_element_drawings"](element)
+					end
+				else
+					element["visible"] = false
+					if was_shown then
+						menu["hide_element_drawings"](element, 0.12)
+						delay(0.12, function()
+							if not element["visible"] then
+								element["frame"]["Visible"] = false
+							end
+						end)
+					else
+						element["frame"]["Visible"] = false
+					end
+				end
+			end
+			self["scroll_index"] = 1
+			local y0 = self["_content_y0"] or 10
+			local real = self["border"]["real_size"]
+			local view_h = (real and real["Y"] or 0) - (y0 + 10)
+			if view_h < 24 then
+				view_h = 0
+			end
+			self["_view_h"] = view_h
+			local content = 0
+			for i = 1, #elements do
+				local element = elements[i]
+				if element["visible"] then
+					content += element["total_y_size"]
+				end
+			end
+			self["total_y_size"] = y0 + content
+			local new_map, shown = self:slot_map(1)
+			self["_slot_map"] = new_map
+			self["_shown"] = shown
+			local cascade = 0
+			for i = 1, #elements do
+				local element = elements[i]
+				local y = new_map[element]
+				if y then
+					local frame = element["frame"]
+					if entering[element] then
+						frame["Position"] = udim2_new(0, 10, 0, y)
+						frame["Visible"] = true
+						local step = cascade
+						cascade += 1
+						delay(0.08 + step * 0.03, function()
+							if menu_open and element["visible"] then
+								menu["show_element_drawings"](element, 0.18)
+							end
+						end)
+					else
+						frame["Visible"] = true
+						tween(frame, { ["tween_position"] = udim2_new(0, 10, 0, y) }, circular, out, 0.18)
+					end
+				elseif element["visible"] then
+					element["frame"]["Visible"] = false
+				end
+			end
+			self:update_thumb(true, 0.18)
+		end
+
+		function new_section:find_sub(name)
+			local subs = self["_multi_subs"]
+			if subs then
+				for i = 1, #subs do
+					if subs[i]["name"] == name then
+						return subs[i]
+					end
+				end
+			end
+			return nil
+		end
+
+		function new_section:active_sub()
+			local subs = self["_multi_subs"]
+			if subs then
+				return subs[self["_multi_active"] or 1]
+			end
+			return nil
+		end
+
+		local sub_pages = {}
+		for i = 1, #sub_names do
+			local page_index = i
+			local sub = {
+				["name"] = sub_names[i],
+				["index"] = page_index,
+				["container"] = new_section,
+				["tab"] = tab,
+			}
+			function sub:open()
+				self["container"]:open_sub(self["index"])
+			end
+			function sub:create_element(info, elements, fake)
+				local container = self["container"]
+				local new_element = container:create_element(info, elements, fake)
+				new_element["_multi_sub"] = self["index"]
+				if self["index"] ~= container["_multi_active"] then
+					new_element["visible"] = false
+					new_element["frame"]["Visible"] = false
+					container:recalculate_size()
+				end
+				return new_element
+			end
+			sub_pages[#sub_pages + 1] = sub
+		end
+		new_section["_multi_subs"] = sub_pages
+
+		return sub_pages, new_section
 	end
 
 	local panel_section = {}
@@ -7442,15 +8191,21 @@ do
 
 		self["elements"][#self["elements"] + 1] = new_element
 
-		if not self["side"] then
-			self["border"]["Size"] = udim2_new(0, 170, 0, self["total_y_size"] + 7)
-			self["inside"]["Size"] = udim2_new(1, -2, 1, -2)
-		end
+		self:recalculate_size()
 
 		return new_element
 	end
 
 	function section:recalculate_size()
+		-- tab sections live in a fixed box: rows that fit stack normally,
+		-- overflow scrolls in a window (same path handles both, so boxes
+		-- can never spill their content). settings-style sections without
+		-- a side grow their border with the content instead.
+		if self["side"] then
+			self:recalculate_scroll()
+			return
+		end
+
 		local elements = self["elements"]
 		local total_size = 10
 
@@ -7462,17 +8217,405 @@ do
 			end
 		end
 
-		if not self["side"] then
-			self["border"]["Size"] = udim2_new(0, 170, 0, total_size + 7)
-			self["inside"]["Size"] = udim2_new(1, -2, 1, -2)
-		end
+		self["border"]["Size"] = udim2_new(0, 170, 0, total_size + 7)
+		self["inside"]["Size"] = udim2_new(1, -2, 1, -2)
 
 		self["total_y_size"] = total_size
+	end
+
+	-- scrollable sections: fixed box, rows always sit on exact in-bounds
+	-- slots. scrolling tweens rows between slots (same beat as the rest of
+	-- the menu); rows that leave the window hide and rows that enter show
+	-- synchronously at the viewport edge, so no row ever draws fractional,
+	-- over the section label, or past the box. no covers, no fades.
+
+	function section:init_scroll_ui()
+		if self["_scroll_bar"] then
+			return
+		end
+		self["scroll_index"] = self["scroll_index"] or 1
+		local track = drawing_proxy["new"]("Square", {
+			["Parent"] = self["inside"],
+			["Position"] = udim2_new(1, -9, 0, 10),
+			["Size"] = udim2_new(0, 4, 0, 40),
+			["Color"] = menu["colors"]["border"],
+			["Filled"] = true,
+			["Transparency"] = 1,
+			["ZIndex"] = 60,
+			["Visible"] = false,
+		})
+		local thumb = drawing_proxy["new"]("Image", {
+			["Parent"] = self["inside"],
+			["Position"] = udim2_new(1, -9, 0, 10),
+			["Size"] = udim2_new(0, 4, 0, 20),
+			["Color"] = menu["colors"]["accent"],
+			["Rounding"] = 2,
+			["Data"] = pixel_image_data,
+			["Transparency"] = 1,
+			["ZIndex"] = 60,
+			["Visible"] = false,
+		})
+		self["_scroll_bar"] = track
+		self["_scroll_thumb"] = thumb
+
+		create_scroll_connection(self["border"], self["border"], function(is_up)
+			local step = self["scroll_step"] or 1
+			self:scroll_by(is_up and -step or step)
+		end)
+		create_click_connection(self["inside"], thumb, function(mouse_position)
+			local top = self["_scroll_top"] or 0
+			local grab = mouse_position["Y"] - (self["_thumb_top"] or mouse_position["Y"])
+			moving = create_connection(mouse["Move"], function()
+				local my = get_mouse_location(user_input_service)["Y"]
+				self:scroll_to_pixel(my - top - grab)
+			end)
+		end)
+		create_click_connection(self["inside"], track, function(mouse_position)
+			local th_top, th_bot = self["_thumb_top"], self["_thumb_bot"]
+			if th_top and th_bot and mouse_position["Y"] >= th_top and mouse_position["Y"] <= th_bot then
+				return
+			end
+			local page = self["_shown"] or 5
+			if page < 1 then
+				page = 1
+			end
+			if th_top and mouse_position["Y"] < th_top then
+				self:scroll_by(-page)
+			else
+				self:scroll_by(page)
+			end
+		end)
+		create_hover_connection(self["inside"], thumb, function()
+			tween(thumb, { ["Color"] = menu["colors"]["highlighted"] }, circular, out, 0.15)
+		end, function()
+			tween(thumb, { ["Color"] = menu["colors"]["accent"] }, circular, out, 0.15)
+		end)
+	end
+
+	function section:set_scrollable(enabled)
+		self["scrollable"] = enabled and true or false
+		self:init_scroll_ui()
+		self:recalculate_size()
+	end
+
+	-- window slots: rows from the start index that fit entirely, in order.
+	-- a row that would only partly fit stays hidden without advancing y,
+	-- so a tall row never blocks smaller rows behind it.
+
+	function section:slot_map(start)
+		local map = {}
+		local view_h = self["_view_h"] or 100
+		-- multi-sections reserve the tab strip above the content, so rows
+		-- start at _content_y0 instead of the usual 10.
+		local y0 = self["_content_y0"] or 10
+		local bottom = y0 + view_h
+		local elements = self["elements"]
+		local y = y0
+		local shown = 0
+		for i = 1, #elements do
+			local element = elements[i]
+			if element["visible"] and i >= start then
+				local h = element["total_y_size"]
+				if y + h <= bottom then
+					map[element] = y
+					y += h
+					shown += 1
+				end
+			end
+		end
+		return map, shown
+	end
+
+	function section:scroll_by(rows)
+		self:animate_to((self["scroll_index"] or 1) + (rows or 0), 0.15)
+	end
+
+	function section:set_scroll_index(index)
+		local current = self["scroll_index"] or 1
+		local dist = math.abs((index or 1) - current)
+		self:animate_to(index, clamp(0.12 + dist * 0.02, 0.12, 0.45))
+	end
+
+	function section:animate_to(index, duration)
+		index = clamp(floor(index or 1), 1, self:max_scroll_start())
+		local old_map = self["_slot_map"] or {}
+		self["scroll_index"] = index
+		local new_map, shown = self:slot_map(index)
+		self["_slot_map"] = new_map
+		self["_shown"] = shown
+		duration = duration or 0.15
+
+		-- rows in both windows glide between exact slots (paths stay fully
+		-- inside the viewport); rows leaving hide and rows entering show
+		-- synchronously at the edge slot. nothing fractional ever draws.
+		local elements = self["elements"]
+		for i = 1, #elements do
+			local element = elements[i]
+			local frame = element["frame"]
+			local old_y, new_y = old_map[element], new_map[element]
+			if new_y then
+				if old_y and old_y ~= new_y then
+					frame["Visible"] = true
+					tween(frame, { ["tween_position"] = udim2_new(0, 10, 0, new_y) }, circular, out, duration)
+				elseif not old_y then
+					frame["Position"] = udim2_new(0, 10, 0, new_y)
+					frame["Visible"] = true
+				end
+			else
+				frame["Visible"] = false
+			end
+		end
+
+		self:update_thumb(true, duration)
+	end
+
+	function section:snap_to(index)
+		self["scroll_index"] = clamp(floor(index or 1), 1, self:max_scroll_start())
+		self:layout_scroll()
+	end
+
+	function section:max_scroll_start()
+		-- farthest you can scroll: the tail is fitted from the end so the
+		-- last row is always on screen. you can never scroll past it into
+		-- blank space. returns a raw element index for slot_map.
+		local elements = self["elements"]
+		local raw = {}
+		local heights = {}
+		for i = 1, #elements do
+			if elements[i]["visible"] then
+				raw[#raw + 1] = i
+				heights[#heights + 1] = elements[i]["total_y_size"]
+			end
+		end
+		local n = #heights
+		if n < 1 then
+			return 1
+		end
+		local view_h = self["_view_h"] or 0
+		local acc = 0
+		local k = n + 1
+		while k > 1 and acc + heights[k - 1] <= view_h do
+			acc += heights[k - 1]
+			k -= 1
+		end
+		if k > n then
+			-- even the last row alone overflows the box: fall back to the
+			-- last row so tall rows stay reachable.
+			return raw[n]
+		end
+		return raw[k]
+	end
+
+	function section:scroll_to_pixel(pixel)
+		local view_h = self["_view_h"] or 0
+		local thumb_h = self["_thumb_h"] or 0
+		local travel = view_h - thumb_h
+		local frac = travel > 0 and clamp((pixel or 0) / travel, 0, 1) or 0
+		local max_start = self:max_scroll_start()
+		-- frac -> pixel offset -> raw start, never past max_start, so a
+		-- thumb dragged to the bottom pins the last row. drag tracks the
+		-- finger 1:1 with instant slot sets, no tween lag.
+		local elements = self["elements"]
+		local total = 0
+		for i = 1, #elements do
+			if elements[i]["visible"] then
+				total += elements[i]["total_y_size"]
+			end
+		end
+		local target = frac * math.max(total - view_h, 0)
+		local start = 1
+		local acc = 0
+		for i = 1, #elements do
+			if start >= max_start then
+				break
+			end
+			local element = elements[i]
+			if element["visible"] then
+				if acc + element["total_y_size"] > target then
+					break
+				end
+				acc += element["total_y_size"]
+				start = i + 1
+			end
+		end
+		self:snap_to(math.min(start, max_start))
+	end
+
+	function section:recalculate_scroll()
+		local elements = self["elements"]
+		local real = self["border"]["real_size"]
+		local y0 = self["_content_y0"] or 10
+		local view_h = (real and real["Y"] or 0) - (y0 + 10)
+		if view_h < 24 then
+			-- box too small for even one row: show nothing rather than
+			-- spilling past the box.
+			view_h = 0
+		end
+		self["_view_h"] = view_h
+
+		local content = 0
+		for i = 1, #elements do
+			local element = elements[i]
+			if element["visible"] then
+				content += element["total_y_size"]
+			end
+		end
+		self["total_y_size"] = y0 + content
+
+		self["scroll_index"] = clamp(self["scroll_index"] or 1, 1, self:max_scroll_start())
+		self:layout_scroll()
+	end
+
+	function section:layout_scroll()
+		local new_map, shown = self:slot_map(clamp(self["scroll_index"] or 1, 1, self:max_scroll_start()))
+		self["scroll_index"] = clamp(self["scroll_index"] or 1, 1, self:max_scroll_start())
+		self["_slot_map"] = new_map
+		self["_shown"] = shown
+
+		local elements = self["elements"]
+		for i = 1, #elements do
+			local element = elements[i]
+			local frame = element["frame"]
+			local y = new_map[element]
+			if y then
+				frame["Position"] = udim2_new(0, 10, 0, y)
+				frame["Visible"] = true
+			else
+				frame["Visible"] = false
+			end
+		end
+
+		self:update_thumb(false)
+	end
+
+	function section:update_thumb(animated, duration)
+		local track = self["_scroll_bar"]
+		local thumb = self["_scroll_thumb"]
+		if not track or not thumb then
+			return
+		end
+		local view_h = self["_view_h"] or 100
+		local y0 = self["_content_y0"] or 10
+		local content = self["total_y_size"] - y0
+		local elements = self["elements"]
+		local visible_count = 0
+		for i = 1, #elements do
+			if elements[i]["visible"] then
+				visible_count += 1
+			end
+		end
+		local shown = self["_shown"] or 0
+		if view_h < 24 or content <= view_h or visible_count <= shown then
+			track["Visible"] = false
+			thumb["Visible"] = false
+			self["_thumb_top"] = nil
+			self["_thumb_bot"] = nil
+			return
+		end
+		if content < 1 then
+			content = 1
+		end
+		local thumb_h = math.max(20, view_h * view_h / content)
+		local travel = view_h - thumb_h
+		local start = self["scroll_index"] or 1
+		-- pixel offset of the window top inside the content, so the thumb
+		-- bottoms out exactly when the last row is pinned at the bottom.
+		local offset = 0
+		for i = 1, #elements do
+			local element = elements[i]
+			if element["visible"] and i < start then
+				offset += element["total_y_size"]
+			end
+		end
+		local span = content - view_h
+		local frac = span > 0 and clamp(offset / span, 0, 1) or 0
+		local thumb_y = y0 + frac * travel
+		local base_y = self["inside"]["real_position"]["Y"]
+		track["Position"] = udim2_new(1, -9, 0, y0)
+		track["Size"] = udim2_new(0, 4, 0, view_h)
+		track["Color"] = menu["colors"]["border"]
+		track["Visible"] = true
+		if animated then
+			tween(thumb, { ["tween_position"] = udim2_new(1, -9, 0, thumb_y) }, circular, out, duration or 0.15)
+		else
+			thumb["Position"] = udim2_new(1, -9, 0, thumb_y)
+		end
+		thumb["Size"] = udim2_new(0, 4, 0, thumb_h)
+		if hovering_objects[thumb] == nil then
+			thumb["Color"] = menu["colors"]["accent"]
+		end
+		thumb["Visible"] = true
+		self["_scroll_top"] = base_y + y0
+		self["_thumb_h"] = thumb_h
+		self["_thumb_top"] = base_y + thumb_y
+		self["_thumb_bot"] = base_y + thumb_y + thumb_h
 	end
 
 	function section:destroy()
 		if not self["border"] then
 			return
+		end
+		local inside_handle = self["inside"]
+		if inside_handle then
+			if self["_drag_strip"] and click_connections[inside_handle] then
+				click_connections[inside_handle][self["_drag_strip"]] = nil
+			end
+			if self["_scroll_thumb"] then
+				if click_connections[inside_handle] then
+					click_connections[inside_handle][self["_scroll_thumb"]] = nil
+				end
+				if hover_connections[inside_handle] then
+					hover_connections[inside_handle][self["_scroll_thumb"]] = nil
+				end
+			end
+			if self["_scroll_bar"] and click_connections[inside_handle] then
+				click_connections[inside_handle][self["_scroll_bar"]] = nil
+			end
+			if self["_multi_tabs"] then
+				for i = 1, #self["_multi_tabs"] do
+					local hit = self["_multi_tabs"][i]["hit"]
+					if hit then
+						if click_connections[inside_handle] then
+							click_connections[inside_handle][hit] = nil
+						end
+						if hover_connections[inside_handle] then
+							hover_connections[inside_handle][hit] = nil
+						end
+					end
+				end
+			end
+		end
+		if self["border"] and scroll_connections[self["border"]] then
+			scroll_connections[self["border"]] = nil
+		end
+		local tab = self["tab"]
+		if tab and tab["col_order"] then
+			for side = 1, 2 do
+				local list = tab["col_order"][side]
+				for i = #list, 1, -1 do
+					if list[i] == self then
+						remove(list, i)
+					end
+				end
+			end
+		end
+		if self["_scroll_thumb"] then
+			pcall(function()
+				self["_scroll_thumb"]:Destroy()
+			end)
+			self["_scroll_thumb"] = nil
+		end
+		if self["_scroll_bar"] then
+			pcall(function()
+				self["_scroll_bar"]:Destroy()
+			end)
+			self["_scroll_bar"] = nil
+		end
+		if self["_drag_strip"] then
+			pcall(function()
+				self["_drag_strip"]:Destroy()
+			end)
+			self["_drag_strip"] = nil
 		end
 		for _, element in self["elements"] do
 			element:remove()
@@ -7483,6 +8626,12 @@ do
 				drawing["Destroy"](drawing)
 				self[_] = nil
 			end
+		end
+		if tab and tab["col_order"] then
+			pcall(menu["layout_tab_sections"], tab, false)
+			-- boxes may have grown back to their hints: refresh every
+			-- scroll window so fitting content stops scrolling.
+			pcall(menu["recalc_all_scrolls"])
 		end
 	end
 
@@ -7696,6 +8845,9 @@ do
 
 			tab_line["Color"] = color
 			drag_logo["Color"] = color
+			for _, line in menu["resize_lines"] do
+				line["Color"] = color
+			end
 			for name, group in menu["groups"] do
 				group["text"]["Color"] = color
 				group["line"]["Color"] = color
@@ -7705,6 +8857,23 @@ do
 						section["line_two"]["Color"] = color
 						section["line"]["Color"] = color
 						section["label"]["Color"] = color
+
+						local multi_tabs = section["_multi_tabs"]
+						if multi_tabs then
+							for i = 1, #multi_tabs do
+								local multi_tab = multi_tabs[i]
+								if multi_tab["active"] then
+									multi_tab["text"]["Color"] = color
+								end
+							end
+							if section["_multi_bar"] then
+								section["_multi_bar"]["Color"] = color
+							end
+						end
+
+						if section["_scroll_thumb"] and hovering_objects[section["_scroll_thumb"]] == nil then
+							section["_scroll_thumb"]["Color"] = color
+						end
 
 						for _, element in section["elements"] do
 							local drawings = element["drawings"]
@@ -8587,7 +9756,9 @@ do
 					end)
 					if mouse_game_alive() or locked then
 						mouse_owned = true
-						mouse_icon_enabled = true
+						-- same as open: free behavior, OS cursor hidden so
+						-- only the custom cursor shows.
+						mouse_icon_enabled = false
 						mouse_behaviour = Enum["MouseBehavior"]["Default"]
 					else
 						mouse_owned = false
@@ -8625,10 +9796,6 @@ do
 				})["on_clicked"],
 				function()
 					getgenv()["_1336mafia"]()
-
-					if IS_VOLT then
-						pcall(cleardrawcache)
-					end
 				end
 			)
 		end
@@ -9800,6 +10967,9 @@ do
 		end
 	end
 
+	-- presets removed: consumers build their own groups/tabs/sections
+	-- via menu.create_group; see menu:setup_configs for the config tab.
+
 	-- > ( loading / unloading )
 
 	do
@@ -9810,7 +10980,6 @@ do
 		end
 
 		local env = getgenv()
-		local old_drawing = env["fake_drawing"]
 
 		local metatables = {}
 
@@ -9891,9 +11060,9 @@ do
 				setrawmetatable(instance, mt)
 			end
 
-			local _unload_fn = old_drawing ~= nil and old_drawing["_UNLOAD"] or nil
-			if type(_unload_fn) == "function" then
-				pcall(_unload_fn)
+			local unload_fn = drawing ~= nil and drawing["_UNLOAD"] or nil
+			if type(unload_fn) == "function" then
+				pcall(unload_fn)
 			end
 		end
 
@@ -9910,9 +11079,10 @@ do
 
 		-- mouse unlock / re-lock loop (ported from test/main_backup.lua):
 		-- applies MouseBehavior + MouseIconEnabled every frame while open,
-		-- one-shot LockCenter on close, then releases so the game owns it.
-		-- pop_menu only arms this when the game had the mouse locked, so
-		-- lobby / menu / dead never get a forced LockCenter.
+		-- one-shot LockCenter on close (owned == false then), then releases
+		-- so the game owns it. pop_menu only arms this when the game had
+		-- the mouse locked, so lobby / menu / dead never get a forced
+		-- LockCenter.
 		create_connection(
 			run_service["RenderStepped"],
 			LPH_NO_VIRTUALIZE(function()
@@ -9924,7 +11094,7 @@ do
 						user_input_service["MouseBehavior"] = mouse_behaviour
 					end)
 
-					if not mouse_icon_enabled then
+					if not mouse_owned then
 						mouse_behaviour = nil
 					end
 				end
@@ -9990,7 +11160,7 @@ end
 return {
 	-- bump on any api/behavior change. main.lua refuses to run below its
 	-- minimum, so a stale cached copy fails loud instead of half-working.
-	["ui_version"] = 10,
+	["ui_version"] = "2.0.0",
 	["menu"] = menu,
 	["signal"] = signal,
 	["tween"] = tween,
