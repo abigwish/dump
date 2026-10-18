@@ -12,16 +12,11 @@ end
 --
 local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
-local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local TeleportService = game:GetService("TeleportService")
-local Lighting = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Stats = game:GetService("Stats")
 local GuiService = game:GetService("GuiService")
 --
 local Client = Players.LocalPlayer
@@ -178,6 +173,8 @@ do -- Library
                 --
                 return Connection and Connection:Disconnect()
             end
+            --
+            return
         end)
         --
         if Connection and Table then
@@ -247,9 +244,9 @@ do -- Library
             if Value.Get and not string.find(Index, "_Status") then
                 if typeof(Value:Get()) == "table" and Value:Get().Color and Value:Get().Transparency then
                     local Transparency = Value:Get().Transparency
-                    local Hue, Saturation, Value = Value:Get().Color:ToHSV()
+                    local Hue, Saturation, Brightness = Value:Get().Color:ToHSV()
                     --
-                    Config[Index] = {Hue, Saturation, Value, Transparency}
+                    Config[Index] = {Hue, Saturation, Brightness, Transparency}
                 else
                     Config[Index] = Value:Get()
                 end
@@ -260,10 +257,10 @@ do -- Library
     end
     --
     function Library:LoadConfig(Config)
-        local ok, Config = pcall(function() return HttpService:JSONDecode(Config) end)
-        if not ok or type(Config) ~= "table" then return end
+        local ok, Decoded = pcall(function() return HttpService:JSONDecode(Config) end)
+        if not ok or type(Decoded) ~= "table" then return end
         --
-        for Index, Value in Config do
+        for Index, Value in Decoded do
             if Library.Flags[Index] and Library.Flags[Index].Set then
                 local success, err = pcall(function() Library.Flags[Index]:Set(Value) end)
                 if not success then
@@ -285,7 +282,7 @@ do -- Library
     end
     --
     function Library:CreateObject(Type, Properties, Hidden)
-        local Hidden = Hidden or false
+        local IsHidden = Hidden or false
         local Object = Instance.new(Type)
         --
         for Index, Value in Properties do
@@ -299,13 +296,13 @@ do -- Library
                 Stroke.Parent = Object
                 Stroke.LineJoinMode = Enum.LineJoinMode.Miter
                 --
-                Library.Objects[Stroke] = {Stroke, {Parent = Object, LineJoinMode = Enum.LineJoinMode.Miter}, Hidden}
+                Library.Objects[Stroke] = {Stroke, {Parent = Object, LineJoinMode = Enum.LineJoinMode.Miter}, IsHidden}
             else
                 Object[Index] = Value
             end
         end
         --
-        Library.Objects[Object] = {Object, Properties, Hidden}
+        Library.Objects[Object] = {Object, Properties, IsHidden}
         --
         return Object
     end
@@ -342,18 +339,18 @@ do -- Library
     end
     --
     function Library:GetObjectsTable(MainUI, AddMain, Ignored)
-        local AddMain = AddMain or false
-        local Ignored = Ignored or {}
+        local WithMain = AddMain or false
+        local Skip = Ignored or {}
         local DescendantTable = {}
         local NewTable = {}
         --
         for _, Descendant in MainUI:GetDescendants() do
-            if table.find(Ignored, Descendant) then continue end
+            if table.find(Skip, Descendant) then continue end
             --
             DescendantTable[#DescendantTable + 1] = Descendant
         end
         --
-        if AddMain then
+        if WithMain then
             DescendantTable[#DescendantTable + 1] = MainUI
         end
         --
@@ -372,10 +369,10 @@ do -- Library
     end
     --
     function Library:SetTableVisible(Table, State, Ignored)
-        local Ignored = Ignored or {}
+        local Skip = Ignored or {}
         --
         for _, Object in Table do
-            if table.find(Ignored, Object) then continue end
+            if table.find(Skip, Object) then continue end
             --
             if typeof(Object) == "table" and Object.SetVisible then 
                 Object:SetVisible(State)
@@ -547,7 +544,7 @@ do -- Library
     end
     --
     function Library:Resizable(Object, DragFrame, MinResize, MaxResize, Increments, UseIcon, UseParent, Delay)
-        local StartingSize, ObjectSize, Dragging, MouseLocation, PerformanceDragUI, NewMouse, Hovering
+        local StartingSize, Dragging, MouseLocation, NewMouse, Hovering
         --
         local function UpdateSize()
             if not MouseLocation then return end
@@ -602,7 +599,11 @@ do -- Library
         end)
         --
         Library:Connection(DragFrame.MouseLeave, function()
-            if NewMouse then NewMouse:Destroy() NewMouse = nil end
+            if NewMouse then
+                NewMouse:Destroy()
+                --
+                NewMouse = nil
+            end
             --
             UserInputService.MouseIconEnabled = true
             Hovering = false
@@ -652,7 +653,11 @@ do -- Library
         --
         Library:Connection(UserInputService.InputEnded, function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and Dragging then
-                if NewMouse then NewMouse:Destroy() NewMouse = nil end
+                if NewMouse then
+                    NewMouse:Destroy()
+                    --
+                    NewMouse = nil
+                end
                 --
                 if UseParent then
                     for _, Child in Object.Parent:GetChildren() do
@@ -754,7 +759,7 @@ do -- Library
             Parent = ColorPickerOutline_1
         })
         --
-        local ColorPickerTransparency = Library:CreateObject("ImageLabel", {
+        Library:CreateObject("ImageLabel", {
             BorderColor3 = Color3.fromRGB(0, 0, 0),
             Image = "rbxassetid://18249241978",
             ImageColor3 = Color3.fromRGB(255, 255, 255),
@@ -1236,27 +1241,27 @@ do -- Library
                     end
                     --
                     function ColorPicker:UpdateHue(Percentage)
-                        local Percentage = typeof(Percentage == "number") and math.clamp(Percentage, 0, 1) or 0
+                        local Amount = typeof(Percentage == "number") and math.clamp(Percentage, 0, 1) or 0
                         --
-                        ColorPicker.Hue = Percentage
+                        ColorPicker.Hue = Amount
                         --
                         ColorPicker:Update()
                     end
                     --
                     function ColorPicker:UpdateAlpha(Percentage)
-                        local Percentage = typeof(Percentage == "number") and math.clamp(Percentage, 0, 1) or 0
+                        local Amount = typeof(Percentage == "number") and math.clamp(Percentage, 0, 1) or 0
                         --
-                        ColorPicker.Alpha = Percentage
+                        ColorPicker.Alpha = Amount
                         --
                         ColorPicker:Update()
                     end
                     --
                     function ColorPicker:UpdateSaturation(PercentageX, PercentageY)
-                        local PercentageX = typeof(PercentageX == "number") and math.clamp(PercentageX, 0, 1) or 0
-                        local PercentageY = typeof(PercentageY == "number") and math.clamp(PercentageY, 0, 1) or 0
+                        local AmountX = typeof(PercentageX == "number") and math.clamp(PercentageX, 0, 1) or 0
+                        local AmountY = typeof(PercentageY == "number") and math.clamp(PercentageY, 0, 1) or 0
                         --
-                        ColorPicker.Saturation[1] = PercentageX
-                        ColorPicker.Saturation[2] = 1 - PercentageY
+                        ColorPicker.Saturation[1] = AmountX
+                        ColorPicker.Saturation[2] = 1 - AmountY
                         --
                         ColorPicker:Update()
                     end
@@ -1337,11 +1342,11 @@ do -- Library
             end
             --
             function ColorPicker:RemoveFrame(Fast)
-                local Fast = Fast or false
+                local Immediate = Fast or false
                 --
                 for Index, Value in Library.UI.ScreenGUI:GetChildren() do
                     if Value:IsA("Frame") and Value.Name == "ColorPickerFrame" .. Library.UI.TotalColorPickers then
-                        if Fast then
+                        if Immediate then
                             Value:Destroy()
                         else
                             Library:Fade(false, Library:GetObjectsTable(Value, true), Value, 0.1)
@@ -1407,7 +1412,7 @@ do -- Library
                 KeybindModePickerOutline.BackgroundTransparency = 1
                 KeybindModePickerMain.BackgroundTransparency = 1
                 --
-                local UIListLayout_9 = Library:CreateObject("UIListLayout", {
+                Library:CreateObject("UIListLayout", {
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Parent = KeybindModePickerMain
                 })
@@ -1509,7 +1514,7 @@ do -- Library
                         Parent = Inactive
                     })
                     --
-                    local UIPadding_48 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingLeft = UDim.new(0, 8),
                         Parent = Inactive
                     })
@@ -1576,11 +1581,11 @@ do -- Library
             end
             --
             function ColorPicker:RemoveOtherFrame(Fast)
-                local Fast = Fast or false
+                local Immediate = Fast or false
                 --
                 for Index, Value in Library.UI.ScreenGUI:GetChildren() do
                     if Value:IsA("Frame") and Value.Name == "ColorPickerOutline" .. Library.UI.TotalColorPickers then
-                        if Fast then
+                        if Immediate then
                             Value:Destroy()
                         else
                             Library:Fade(false, Library:GetObjectsTable(Value, true), Value, 0.1)
@@ -1897,7 +1902,7 @@ do -- Library
                 KeybindModePickerOutline.BackgroundTransparency = 1
                 KeybindModePickerMain.BackgroundTransparency = 1
                 --
-                local UIListLayout_9 = Library:CreateObject("UIListLayout", {
+                Library:CreateObject("UIListLayout", {
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Parent = KeybindModePickerMain
                 })
@@ -2003,7 +2008,7 @@ do -- Library
                         Parent = Inactive
                     })
                     --
-                    local UIPadding_48 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingLeft = UDim.new(0, 8),
                         Parent = Inactive
                     })
@@ -2091,11 +2096,11 @@ do -- Library
             end
             --
             function Keybind:RemoveFrame(Fast)
-                local Fast = Fast or false
+                local Immediate = Fast or false
                 --
                 for Index, Value in Library.UI.ScreenGUI:GetChildren() do
                     if Value:IsA("Frame") and Value.Name == "KeybindModePickerOutline" .. Library.UI.TotalKeybindModes then
-                        if Fast then
+                        if Immediate then
                             Value:Destroy()
                         else
                             Library:Fade(false, Library:GetObjectsTable(Value, true), Value, 0.1)
@@ -2294,7 +2299,7 @@ do -- Library
             Parent = MultiBoxBack_5
         })
         --
-        local UIGradient_34 = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = -90,
             Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(39, 39, 39)),
@@ -2319,7 +2324,7 @@ do -- Library
             Parent = MultiBoxBack_5
         })
         --
-        local UIPadding_87 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 5),
             Parent = MultiBoxValue_5
         })
@@ -2338,7 +2343,7 @@ do -- Library
             Parent = MultiBoxOutline_5
         })
         --
-        local MultiBoxName_5 = Library:CreateObject("TextLabel", {
+        Library:CreateObject("TextLabel", {
             FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -2356,7 +2361,7 @@ do -- Library
             Parent = PreviewMultiBox_5
         })
         --
-        local UIPadding_88 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewMultiBox_5
         })
@@ -2386,7 +2391,7 @@ do -- Library
         MultiBoxMainOutline.BackgroundTransparency = 1
         MultiBoxMain.BackgroundTransparency = 1
         --
-        local UIListLayout_9 = Library:CreateObject("UIListLayout", {
+        Library:CreateObject("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder,
             Parent = MultiBoxMain
         })
@@ -2464,7 +2469,7 @@ do -- Library
                     Parent = Inactive
                 })
                 --
-                local UIPadding_48 = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingLeft = UDim.new(0, 8),
                     Parent = Inactive
                 })
@@ -2590,11 +2595,11 @@ do -- Library
             end
             --
             function MultiBox:Toggle(Fast)
-                local Fast = Fast or false
+                local Immediate = Fast or false
                 local OldValues = Library.Objects[MultiBoxMainOutline]
                 --
                 if MultiBox.Open then
-                    if Fast then
+                    if Immediate then
                         Library:Fade(false, Library:GetObjectsTable(MultiBoxMainOutline, true), MultiBoxMainOutline, 0)
                         MultiBoxMainOutline.Size = UDim2.new(0, MultiBoxOutline_5.AbsoluteSize.X, 0, 0)
                         Library.Objects[MultiBoxMainOutline] = {MultiBoxMainOutline, OldValues[2], true}
@@ -2607,7 +2612,7 @@ do -- Library
                 else
                     Library.Objects[MultiBoxMainOutline] = {MultiBoxMainOutline, OldValues[2], false}
                     --
-                    if Fast then
+                    if Immediate then
                         Library:Fade(true, Library:GetObjectsTable(MultiBoxMainOutline, true), MultiBoxMainOutline, 0)
                         MultiBoxMainOutline.Size = UDim2.new(0, MultiBoxOutline_5.AbsoluteSize.X, 0, (#Options.Content * 20) + 2)
                     else
@@ -2796,7 +2801,7 @@ do -- Library
             Parent = DropdownOutline_5
         })
         --
-        local DropdownArrow = Library:CreateObject("ImageLabel", {
+        Library:CreateObject("ImageLabel", {
             ImageColor3 = Color3.fromRGB(151, 151, 151),
             BorderColor3 = Color3.fromRGB(0, 0, 0),
             Name = "DropdownArrow",
@@ -2810,7 +2815,7 @@ do -- Library
             Parent = DropdownBack_5
         })
         --
-        local UIGradient_34 = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = -90,
             Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(39, 39, 39)),
@@ -2835,7 +2840,7 @@ do -- Library
             Parent = DropdownBack_5
         })
         --
-        local UIPadding_87 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 5),
             Parent = DropdownValue_5
         })
@@ -2854,7 +2859,7 @@ do -- Library
             Parent = DropdownOutline_5
         })
         --
-        local DropdownName_5 = Library:CreateObject("TextLabel", {
+        Library:CreateObject("TextLabel", {
             FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -2872,7 +2877,7 @@ do -- Library
             Parent = PreviewDropdown_5
         })
         --
-        local UIPadding_88 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewDropdown_5
         })
@@ -2908,7 +2913,7 @@ do -- Library
         DropdownMainOutline.BackgroundTransparency = 1
         DropdownMain.BackgroundTransparency = 1
         --
-        local UIListLayout_9 = Library:CreateObject("UIListLayout", {
+        Library:CreateObject("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder,
             Parent = DropdownMain
         })
@@ -2984,7 +2989,7 @@ do -- Library
                     Parent = Inactive
                 })
                 --
-                local UIPadding_48 = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingLeft = UDim.new(0, 8),
                     Parent = Inactive
                 })
@@ -3059,11 +3064,11 @@ do -- Library
             end
             --
             function Dropdown:Toggle(Fast)
-                local Fast = Fast or false
+                local Immediate = Fast or false
                 local OldValues = Library.Objects[DropdownMainOutline]
                 --
                 if Dropdown.Open then
-                    if Fast then
+                    if Immediate then
                         Library:Fade(false, Library:GetObjectsTable(DropdownMainOutline, true), DropdownMainOutline, 0)
                         DropdownMainOutline.Size = UDim2.new(0, DropdownOutline_5.AbsoluteSize.X, 0, 0)
                         Library.Objects[DropdownMainOutline] = {DropdownMainOutline, OldValues[2], true}
@@ -3084,7 +3089,7 @@ do -- Library
                     DropdownMain.CanvasSize = UDim2.new(0, 0, 0, ContentHeight)
                     DropdownMain.AutomaticCanvasSize = Enum.AutomaticSize.None
                     --
-                    if Fast then
+                    if Immediate then
                         Library:Fade(true, Library:GetObjectsTable(DropdownMainOutline, true), DropdownMainOutline, 0)
                         DropdownMainOutline.Size = UDim2.new(0, DropdownOutline_5.AbsoluteSize.X, 0, CappedHeight)
                     else
@@ -3263,7 +3268,7 @@ do -- Library
             Parent = SliderOutline
         })
         --
-        local UIGradient_2 = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = -90,
             Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(81, 81, 81)),
@@ -3332,7 +3337,7 @@ do -- Library
             })
         end
         --
-        local UIPadding_3 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingTop = UDim.new(0, -4),
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewSlider
@@ -3371,7 +3376,7 @@ do -- Library
             Parent = PreviewSlider
         })
         --
-        local AddButton2 = Library:CreateObject("Frame", {
+        Library:CreateObject("Frame", {
             Size = UDim2.new(0, 1, 0, 3),
             Name = "AddButton2",
             Position = UDim2.new(0, 1, 0, -1),
@@ -3419,7 +3424,7 @@ do -- Library
             Parent = PreviewSlider
         })
         --
-        local MinusButton = Library:CreateObject("Frame", {
+        Library:CreateObject("Frame", {
             BorderColor3 = Color3.fromRGB(0, 0, 0),
             AnchorPoint = Vector2.new(0, 1),
             Name = "MinusButton",
@@ -3433,13 +3438,16 @@ do -- Library
         })
         --
         local function GetValue(Value)
-            return typeof(Value) == "string" and Value or ("%.14g"):format(Value)
+            if typeof(Value) == "string" then
+                return Value
+            end
+            --
+            return ("%.14g"):format(tonumber(Value) or 0)
         end
         --
         local function SetValue(Value, IgnoreLimit)
             if (not Value) or Slider.Hiding then return end
             --
-            local OriginalValue = Value
             -- check if we should allow values beyond the max
             if Options.OverrideLimit and IgnoreLimit then
                 -- allow any value (still enforce min and decimal rounding)
@@ -3449,7 +3457,9 @@ do -- Library
                 Value = Value and math.clamp(Options.Decimal * math.round(tonumber(Value) / Options.Decimal), Options.Min, Options.Max) or 0
             end
             
-            local ValueText = Options.Disable[1] and ((Value <= Options.Disable[2] or Value >= Options.Disable[3]) and Options.Disable[1]) or tostring(GetValue(Value)) .. Options.Ending
+            local Bounded = tonumber(Value) or 0
+            --
+            local ValueText = Options.Disable[1] and ((Bounded <= Options.Disable[2] or Bounded >= Options.Disable[3]) and Options.Disable[1]) or tostring(GetValue(Value)) .. Options.Ending
             --
             SliderValue.Text = "<b>" .. ValueText .. "</b>"
             --
@@ -3656,7 +3666,7 @@ do -- Library
             Parent = ToggleOutline
         })
         --
-        local UIGradient_3 = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = 90,
             Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(84, 84, 84)),
@@ -3715,7 +3725,7 @@ do -- Library
             })
         end
         --
-        local UIPadding_7 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = ToggleName
         })
@@ -3819,7 +3829,7 @@ do -- Library
                 --
                 Toggle.ColorPickers[#Toggle.ColorPickers + 1] = ColorPicker
                 --
-                local ColorPickerFrame = Library:ColorPicker({
+                Library:ColorPicker({
                     Name = Options.Name,
                     Default = Options.Default,
                     Flag = Options.Flag,
@@ -3957,7 +3967,7 @@ do -- Library
             Parent = PreviewLabel
         })
         --
-        local UIPadding_7 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = LabelText
         })
@@ -4173,18 +4183,18 @@ do -- Library
         --
         TextBox.Object = TextBoxObject
         --
-        local UIPadding_6 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingBottom = UDim.new(0, 2),
             PaddingLeft = UDim.new(0, 5),
             Parent = TextBoxObject
         })
         --
-        local UIPadding_7 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewTextBox
         })
         --
-        local TextBoxName = Library:CreateObject("TextLabel", {
+        Library:CreateObject("TextLabel", {
             FontFace = Library.UI.NewFont,
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -4312,7 +4322,7 @@ do -- Library
             Parent = Options.Parent
         })
         --
-        local UIPadding_11 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewList
         })
@@ -4387,7 +4397,7 @@ do -- Library
             Parent = ListOutline
         })
         --
-        local UIListLayout_2 = Library:CreateObject("UIListLayout", {
+        Library:CreateObject("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder,
             Parent = ListScrolling
         })
@@ -4481,7 +4491,7 @@ do -- Library
                         Parent = InactiveValue
                     })
                     --
-                    local UIPadding_135 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingLeft = UDim.new(0, 10),
                         Parent = IconImage
                     })
@@ -4489,7 +4499,7 @@ do -- Library
                 --
                 ValueName_1.Text = Library:ClampString(Value, ValueName_1.AbsoluteSize.X - 25)
                 --
-                local UIPadding_13 = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingLeft = UDim.new(0, (Icon and 25 or 10)),
                     Parent = ValueName_1
                 })
@@ -4714,7 +4724,7 @@ do -- Library
             Parent = ButtonInline
         })
         --
-        local UIGradient_4 = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = 90,
             Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(39, 39, 39)),
@@ -4745,7 +4755,7 @@ do -- Library
             })
         end
         --
-        local UIPadding_8 = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = PreviewButton
         })
@@ -4964,7 +4974,7 @@ do -- Library
             Parent = Outline_1
         })
         --
-        local Pattern = Library:CreateObject("ImageLabel", {
+        Library:CreateObject("ImageLabel", {
             ImageColor3 = Color3.fromRGB(12, 12, 12),
             ScaleType = Enum.ScaleType.Tile,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -4988,7 +4998,7 @@ do -- Library
             Parent = Outline_1
         })
         --
-        local GradientBar = Library:CreateObject("ImageLabel", {
+        Library:CreateObject("ImageLabel", {
             BorderColor3 = Color3.fromRGB(0, 0, 0),
             Image = "rbxassetid://8508019876",
             BackgroundTransparency = 1,
@@ -5000,7 +5010,7 @@ do -- Library
             Parent = TopBarGradientHolder
         })
         --
-        local UIGradient = Library:CreateObject("UIGradient", {
+        Library:CreateObject("UIGradient", {
             Rotation = 90,
             Transparency = NumberSequence.new{
                 NumberSequenceKeypoint.new(0, 0),
@@ -5024,7 +5034,7 @@ do -- Library
             Parent = Outline_1
         })
         --
-        local Outline_2 = Library:CreateObject("Frame", {
+        Library:CreateObject("Frame", {
             AnchorPoint = Vector2.new(1, 0),
             Name = "Outline_2",
             Position = UDim2.new(1, 0, 0, 0),
@@ -5045,18 +5055,18 @@ do -- Library
             Parent = SideBarMain
         })
         --
-        local UIListLayout = Library:CreateObject("UIListLayout", {
+        Library:CreateObject("UIListLayout", {
             Padding = UDim.new(0, 0),
             SortOrder = Enum.SortOrder.LayoutOrder,
             Parent = Holder
         })
         --
-        local UIPadding = Library:CreateObject("UIPadding", {
+        Library:CreateObject("UIPadding", {
             PaddingTop = UDim.new(0, 10),
             Parent = Holder
         })
         --
-        local Inline_4 = Library:CreateObject("Frame", {
+        Library:CreateObject("Frame", {
             AnchorPoint = Vector2.new(1, 0),
             Name = "Inline_4",
             Position = UDim2.new(1, -1, 0, 0),
@@ -5184,7 +5194,7 @@ do -- Library
                 Parent = Inline_1
             })
             --
-            local Pattern_1 = Library:CreateObject("ImageLabel", {
+            Library:CreateObject("ImageLabel", {
                 ImageColor3 = Color3.fromRGB(12, 12, 12),
                 ScaleType = Enum.ScaleType.Tile,
                 BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -5252,7 +5262,7 @@ do -- Library
                 Parent = SectionsHolder
             })
             --
-            local UIPadding_1 = Library:CreateObject("UIPadding", {
+            Library:CreateObject("UIPadding", {
                 PaddingTop = UDim.new(0, 19),
                 PaddingBottom = UDim.new(0, 19),
                 PaddingRight = UDim.new(0, 8),
@@ -5260,7 +5270,7 @@ do -- Library
                 Parent = Left
             })
             --
-            local UIListLayout12 = Library:CreateObject("UIListLayout", {
+            Library:CreateObject("UIListLayout", {
                 Padding = UDim.new(0, 19),
                 SortOrder = Enum.SortOrder.LayoutOrder,
                 Parent = Left
@@ -5278,7 +5288,7 @@ do -- Library
                 Parent = SectionsHolder
             })
             --
-            local UIPadding_2 = Library:CreateObject("UIPadding", {
+            Library:CreateObject("UIPadding", {
                 PaddingTop = UDim.new(0, 19),
                 PaddingBottom = UDim.new(0, 19),
                 PaddingRight = UDim.new(0, 19),
@@ -5286,7 +5296,7 @@ do -- Library
                 Parent = Right
             })
             --
-            local UIListLayout52 = Library:CreateObject("UIListLayout", {
+            Library:CreateObject("UIListLayout", {
                 Padding = UDim.new(0, 19),
                 SortOrder = Enum.SortOrder.LayoutOrder,
                 Parent = Right
@@ -5515,13 +5525,13 @@ do -- Library
                     Parent = SectionInline
                 })
                 --
-                local UIListLayout_3 = Library:CreateObject("UIListLayout", {
+                Library:CreateObject("UIListLayout", {
                     Padding = UDim.new(0, 10),
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Parent = SectionScrolling
                 })
                 --
-                local UIPadding_8 = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingTop = UDim.new(0, 19),
                     PaddingBottom = UDim.new(0, 10),
                     PaddingRight = UDim.new(0, 18),
@@ -5580,7 +5590,7 @@ do -- Library
                     Parent = SectionMain
                 })
                 --
-                local UIGradient = Library:CreateObject("UIGradient", {
+                Library:CreateObject("UIGradient", {
                     Rotation = -90,
                     Transparency = NumberSequence.new{
                         NumberSequenceKeypoint.new(0, 0),
@@ -5600,7 +5610,7 @@ do -- Library
                     Parent = SectionMain
                 })
                 --
-                local UIGradient = Library:CreateObject("UIGradient", {
+                Library:CreateObject("UIGradient", {
                     Rotation = 90,
                     Transparency = NumberSequence.new{
                         NumberSequenceKeypoint.new(0, 0),
@@ -5621,7 +5631,7 @@ do -- Library
                     ZIndex = 5
                 })
                 --
-                local UIGradient2 = Library:CreateObject("UIGradient", {
+                Library:CreateObject("UIGradient", {
                     Rotation = 90,
                     Color = ColorSequence.new{
                         ColorSequenceKeypoint.new(0, Color3.fromRGB(19, 19, 19)),
@@ -5755,7 +5765,7 @@ do -- Library
                             TextXAlignment = "Left"
                         })
                         --
-                        local UIPadding_82 = Library:CreateObject("UIPadding", {
+                        Library:CreateObject("UIPadding", {
                             PaddingLeft = UDim.new(0, 8),
                             Parent = ButtonText
                         })
@@ -5942,7 +5952,11 @@ do -- Library
                     --
                     Library:Connection(UserInputService.InputEnded, function(Input)
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                            if Section.DragConnection then Section.DragConnection:Disconnect() Section.DragConnection = nil end
+                            if Section.DragConnection then
+                                Section.DragConnection:Disconnect()
+                                --
+                                Section.DragConnection = nil
+                            end
                             Section.Left.Order = 1
                             Section.Right.Order = 1
                             Title.TextColor3 = Color3.fromRGB(198, 198, 198)
@@ -6011,13 +6025,13 @@ do -- Library
                     Parent = SectionInline
                 })
                 --
-                local UIPadding_81 = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingRight = UDim.new(0, 10),
                     PaddingLeft = UDim.new(0, 10),
                     Parent = SectionMain
                 })
                 --
-                local UIListLayout52 = Library:CreateObject("UIListLayout", {
+                Library:CreateObject("UIListLayout", {
                     Padding = UDim.new(0, -0),
                     FillDirection = Enum.FillDirection.Horizontal,
                     VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -6038,7 +6052,7 @@ do -- Library
                     ZIndex = 5
                 })
                 --
-                local UIGradient2 = Library:CreateObject("UIGradient", {
+                Library:CreateObject("UIGradient", {
                     Rotation = 90,
                     Color = ColorSequence.new{
                         ColorSequenceKeypoint.new(0, Color3.fromRGB(19, 19, 19)),
@@ -6102,7 +6116,7 @@ do -- Library
                         Parent = Outline_1
                     })
                     --
-                    local UIPadding_141 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingTop = UDim.new(0, 52),
                         Parent = SectionsHolder2
                     })
@@ -6117,14 +6131,14 @@ do -- Library
                         Parent = SectionsHolder2
                     })
                     --
-                    local UIPadding_11 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingTop = UDim.new(0, 19),
                         PaddingBottom = UDim.new(0, 19),
                         PaddingRight = UDim.new(0, 12),
                         Parent = Left2
                     })
                     --
-                    local UIListLayout12 = Library:CreateObject("UIListLayout", {
+                    Library:CreateObject("UIListLayout", {
                         Padding = UDim.new(0, 19),
                         SortOrder = Enum.SortOrder.LayoutOrder,
                         Parent = Left2
@@ -6141,7 +6155,7 @@ do -- Library
                         Parent = SectionsHolder2
                     })
                     --
-                    local UIPadding_21 = Library:CreateObject("UIPadding", {
+                    Library:CreateObject("UIPadding", {
                         PaddingTop = UDim.new(0, 19),
                         PaddingBottom = UDim.new(0, 19),
                         PaddingRight = UDim.new(0, 6),
@@ -6149,7 +6163,7 @@ do -- Library
                         Parent = Right2
                     })
                     --
-                    local UIListLayout521 = Library:CreateObject("UIListLayout", {
+                    Library:CreateObject("UIListLayout", {
                         Padding = UDim.new(0, 19),
                         SortOrder = Enum.SortOrder.LayoutOrder,
                         Parent = Right2
@@ -6352,7 +6366,7 @@ do -- Library
                     Parent = Left
                 })
                 --
-                local DropdownChecker = Library:CreateObject("Frame", {
+                Library:CreateObject("Frame", {
                     Name = "DropdownChecker",
                     Position = UDim2.new(0, 0, 1, 0),
                     Visible = false,
@@ -6397,7 +6411,7 @@ do -- Library
                     Parent = DropdownImageMain
                 })
                 --
-                local DownArrow = Library:CreateObject("ImageLabel", {
+                Library:CreateObject("ImageLabel", {
                     BorderColor3 = Color3.fromRGB(0, 0, 0),
                     Name = "DownArrow",
                     Size = UDim2.new(0, 5, 0, 4),
@@ -6460,7 +6474,7 @@ do -- Library
                     end,
                 })
                 --
-                local UIPadding = Library:CreateObject("UIPadding", {
+                Library:CreateObject("UIPadding", {
                     PaddingLeft = UDim.new(0, 18),
                     Parent = ToggleHolder
                 })
@@ -6477,7 +6491,7 @@ do -- Library
                     ZIndex = 5
                 })
                 --
-                local UIGradient2 = Library:CreateObject("UIGradient", {
+                Library:CreateObject("UIGradient", {
                     Rotation = 90,
                     Color = ColorSequence.new{
                         ColorSequenceKeypoint.new(0, Color3.fromRGB(19, 19, 19)),
@@ -6530,7 +6544,7 @@ do -- Library
                 DropdownMainOutline.BackgroundTransparency = 1
                 DropdownMain.BackgroundTransparency = 1
                 --
-                local UIListLayout_9 = Library:CreateObject("UIListLayout", {
+                Library:CreateObject("UIListLayout", {
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Parent = DropdownMain
                 })
@@ -6672,11 +6686,11 @@ do -- Library
                 --
                 do -- Functions
                     function ImageDropdown:Toggle(Fast)
-                        local Fast = Fast or false
+                        local Immediate = Fast or false
                         local OldValues = Library.Objects[DropdownMainOutline]
                         --
                         if ImageDropdown.Open then
-                            if Fast then
+                            if Immediate then
                                 Library:Fade(false, Library:GetObjectsTable(DropdownMainOutline, true), DropdownMainOutline, 0)
                                 DropdownMainOutline.Size = UDim2.new(0, DropdownImageOutline.AbsoluteSize.X, 0, 0)
                                 Library.Objects[DropdownMainOutline] = {DropdownMainOutline, OldValues[2], true}
@@ -6689,7 +6703,7 @@ do -- Library
                         else
                             Library.Objects[DropdownMainOutline] = {DropdownMainOutline, OldValues[2], false}
                             --
-                            if Fast then
+                            if Immediate then
                                 Library:Fade(true, Library:GetObjectsTable(DropdownMainOutline, true), DropdownMainOutline, 0)
                                 DropdownMainOutline.Size = UDim2.new(0, DropdownImageOutline.AbsoluteSize.X, 0, (ImageDropdown.ContentLength * 30) + 2)
                             else
@@ -6980,7 +6994,7 @@ do -- Library
                 Parent = Library.UI.ScreenGUI
             }, true)
             --
-            local UIGradient = Library:CreateObject("UIGradient", {
+            Library:CreateObject("UIGradient", {
                 Transparency = NumberSequence.new{
                     NumberSequenceKeypoint.new(0, 1),
                     NumberSequenceKeypoint.new(0.25, 0.6119999885559082),
@@ -6995,7 +7009,7 @@ do -- Library
                 Parent = MainWatermark
             }, true)
             --
-            local UIGradient_1 = Library:CreateObject("UIGradient", {
+            Library:CreateObject("UIGradient", {
                 Transparency = NumberSequence.new{
                     NumberSequenceKeypoint.new(0, 1),
                     NumberSequenceKeypoint.new(0.232, 0.4000000059604645),
@@ -7023,13 +7037,13 @@ do -- Library
                 Parent = MainWatermark
             }, true)
             --
-            local Stroke = Library:CreateObject("UIStroke", {
+            Library:CreateObject("UIStroke", {
                 Parent = WatermarkText,
                 LineJoinMode = Enum.LineJoinMode.Miter,
                 Color = Color3.fromRGB(50, 50, 50),
             }, true)
             --
-            local UIPadding = Library:CreateObject("UIPadding", {
+            Library:CreateObject("UIPadding", {
                 PaddingRight = UDim.new(0, 22),
                 PaddingLeft = UDim.new(0, 22),
                 Parent = WatermarkText
@@ -7111,7 +7125,7 @@ do -- Library
             --
             NotificationFrameObject.BackgroundTransparency = 1
             --
-            local UIGradient = Library:CreateObject("UIGradient", {
+            Library:CreateObject("UIGradient", {
                 Transparency = NumberSequence.new{
                     NumberSequenceKeypoint.new(0, 1),
                     NumberSequenceKeypoint.new(0.25, 0.6119999885559082),
@@ -7128,7 +7142,7 @@ do -- Library
             --
             UIStroke.Transparency = 1
             --
-            local UIGradient_1 = Library:CreateObject("UIGradient", {
+            Library:CreateObject("UIGradient", {
                 Transparency = NumberSequence.new{
                     NumberSequenceKeypoint.new(0, 1),
                     NumberSequenceKeypoint.new(0.232, 0.4000000059604645),
@@ -7166,7 +7180,7 @@ do -- Library
             --
             NotificationText.TextTransparency = 1
             --
-            local UIPadding = Library:CreateObject("UIPadding", {
+            Library:CreateObject("UIPadding", {
                 PaddingRight = UDim.new(0, 22),
                 PaddingLeft = UDim.new(0, 22),
                 Parent = NotificationText
@@ -7489,7 +7503,7 @@ do
     local Visuals = Window:CreateTab({Icon = "rbxassetid://15453344494"})
     local Misc = Window:CreateTab({Icon = "rbxassetid://15453349637"})
     local Changer = Window:CreateTab({Icon = "rbxassetid://15453354931"})
-    local Players = Window:CreateTab({Icon = "rbxassetid://15453359751"})
+    local PlayersTab = Window:CreateTab({Icon = "rbxassetid://15453359751"})
     local Configs = Window:CreateTab({Icon = "rbxassetid://15453364412"})
     --
     -- -> (visuals categories) {left/right section pair per category}
@@ -7517,7 +7531,7 @@ do
             Visuals = Visuals,
             Misc = Misc,
             Changer = Changer,
-            Players = Players,
+            Players = PlayersTab,
             Configs = Configs,
         },
         VisualsSections = {
