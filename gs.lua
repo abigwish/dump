@@ -7081,9 +7081,9 @@ do -- Library
                         local FPS = math.floor(1 / math.abs(Watermark.Tick - tick()))
                         --
                         Watermark.Tick = tick()
-                        --
+
                         if (tick() - Watermark.RefreshTick) > Library.UI.WatermarkRefreshRate then
-                            Library:UpdateWatermark(("sk<font color='rgb(%d, %d, %d)'>eed</font>  <font color='rgb(%d, %d, %d)'>%s</font> <font size='10'>FPS</font>  %s"):format(R, G, B, R, G, B, FPS, os.date("%X")))
+                            Library:UpdateWatermark(("res<font color='rgb(%d, %d, %d)'>olve</font>  <font color='rgb(%d, %d, %d)'>%s</font> <font size='10'>FPS</font>  %s"):format(R, G, B, R, G, B, FPS, os.date("%X")))
                             --
                             Watermark.RefreshTick = tick()
                         end
