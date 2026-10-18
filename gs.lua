@@ -1,8 +1,13 @@
--- menu
+-- -> (re-inject) {kill the old resolve (every feature + the gui) before this run builds a new one}
 do
-    local oldUnload = getgenv().GsMenuUnload
-    getgenv().GsMenuUnload = nil
+    local env = getgenv()
+    --
+    local oldUnload = env.Resolve and env.Resolve.Unload or env.GsMenuUnload
+    --
     if oldUnload then pcall(oldUnload) end
+    --
+    env.Resolve = nil
+    env.GsMenuUnload = nil
 end
 --
 local Workspace = game:GetService("Workspace")
@@ -5955,6 +5960,7 @@ do -- Library
                 Options = Library:Validate({
                     Name = "Preview Sub Section",
                     Options = {},
+                    Names = {},
                     Flag = Library:NewFlag(),
                     Callback = function() end
                 }, Options or {})
@@ -6059,12 +6065,27 @@ do -- Library
                     TextStrokeTransparency = 1,
                     TextXAlignment = "Left"
                 })
+                -- -> (sub section names) {title follows the hovered/active icon}
+                function SubSection:SetTitleText(Text)
+                    local NewText = "<b>" .. tostring(Text or Options.Name) .. "</b>"
+                    --
+                    if Title.Text ~= NewText then
+                        Title.Text = NewText
+                    end
+                end
+                --
+                Library:Connection(Title:GetPropertyChangedSignal("TextBounds"), function()
+                    TitleInline.Size = UDim2.new(0, Title.TextBounds.X + 6, 0, 2)
+                end, "SubSectionTitle")
                 --
                 for Index, Value in Options.Options do
+                    local ItemName = Options.Names[Index] or Options.Name
+                    --
                     local SectionItem = {
                         Active = false,
                         Hovering = false,
                         Position = "Bottom",
+                        Name = ItemName,
                         Elements = {},
                     }
                     --
@@ -6190,6 +6211,8 @@ do -- Library
                                 --
                                 SubSection.CurrentSection = SectionItem
                                 SectionOutline:SetAttribute("g", Index)
+                                --
+                                SubSection:SetTitleText(SectionItem.Name)
                             end
                         end
                         --
@@ -6266,6 +6289,8 @@ do -- Library
                             if not SectionItem.Active then
                                 SectionItem.Hovering = true
                                 Icon.ImageColor3 = Color3.fromRGB(124, 124, 124)
+                                --
+                                SubSection:SetTitleText(SectionItem.Name)
                             end
                         end)
                         --
@@ -6273,6 +6298,8 @@ do -- Library
                             if not SectionItem.Active then
                                 SectionItem.Hovering = false
                                 Icon.ImageColor3 = Color3.fromRGB(93, 93, 93)
+                                --
+                                SubSection:SetTitleText(SubSection.CurrentSection and SubSection.CurrentSection.Name or Options.Name)
                             end
                         end)
                     end
@@ -7451,12 +7478,86 @@ do -- Library
     end
 end
 
-local Window = Library:Window({CloseBind = Enum.KeyCode.Insert})
-local Rage = Window:CreateTab({Icon = "rbxassetid://18248771514"})
-local AA = Window:CreateTab({Icon = "rbxassetid://15453313321"})
-local Legit = Window:CreateTab({Icon = "rbxassetid://15453335745"})
-local Visuals = Window:CreateTab({Icon = "rbxassetid://15453344494"})
-local Misc = Window:CreateTab({Icon = "rbxassetid://15453349637"})
-local Changer = Window:CreateTab({Icon = "rbxassetid://15453354931"})
-local Players = Window:CreateTab({Icon = "rbxassetid://15453359751"})
-local Configs = Window:CreateTab({Icon = "rbxassetid://15453364412"})
+-- -> ( resolve ) {the menu itself, main.lua grabs these handles once it has loaded this }
+do
+    local env = getgenv()
+    --
+    local Window = Library:Window({CloseBind = Enum.KeyCode.Insert})
+    local Rage = Window:CreateTab({Icon = "rbxassetid://18248771514"})
+    local AA = Window:CreateTab({Icon = "rbxassetid://15453313321"})
+    local Legit = Window:CreateTab({Icon = "rbxassetid://15453335745"})
+    local Visuals = Window:CreateTab({Icon = "rbxassetid://15453344494"})
+    local Misc = Window:CreateTab({Icon = "rbxassetid://15453349637"})
+    local Changer = Window:CreateTab({Icon = "rbxassetid://15453354931"})
+    local Players = Window:CreateTab({Icon = "rbxassetid://15453359751"})
+    local Configs = Window:CreateTab({Icon = "rbxassetid://15453364412"})
+    --
+    -- -> (visuals categories) {left/right section pair per category}
+    local function VisualsCategory(Handle, Name)
+        return {
+            Left = Handle:Section({Name = Name, Fill = true}),
+            Right = Handle:Section({Name = Name, Side = "Right", Fill = true}),
+        }
+    end
+    --
+    -- -> (visuals sub section) {everyone/self/world/general}
+    local Everyone, Self, World, General = Visuals:SubSection({
+        Name = "Visuals",
+        Options = {"rbxassetid://18334627891", "rbxassetid://18334630306", "rbxassetid://18334626899", "rbxassetid://18334625304"},
+        Names = {"Everyone", "Self", "World", "General"},
+    })
+    --
+    local Resolve = {
+        Library = Library,
+        Window = Window,
+        Tabs = {
+            Rage = Rage,
+            AA = AA,
+            Legit = Legit,
+            Visuals = Visuals,
+            Misc = Misc,
+            Changer = Changer,
+            Players = Players,
+            Configs = Configs,
+        },
+        VisualsSections = {
+            Everyone = VisualsCategory(Everyone, "Everyone"),
+            Self = VisualsCategory(Self, "Self"),
+            World = VisualsCategory(World, "World"),
+            General = VisualsCategory(General, "General"),
+        },
+        Connections = {},
+    }
+    --
+    -- -> (unload) {every toggle off, then the whole gui + library gone, main.lua rebuilds it}
+    function Resolve:Unload()
+        for _, Flag in Resolve.Library.Flags do
+            if Flag.Set then pcall(function() Flag:Set(false) end) end
+        end
+        --
+        if env.GsMenuUnload then pcall(env.GsMenuUnload) end
+        --
+        env.GsMenuUnload = nil
+        --
+        for _, Connection in Resolve.Connections do
+            pcall(function() Connection:Disconnect() end)
+        end
+        --
+        table.clear(Resolve.Connections)
+        --
+        env.Resolve = nil
+    end
+    --
+    -- -> (connections) {tracked so the next execute kills them}
+    function Resolve:CreateConnection(Signal, Callback)
+        local Connection = Signal:Connect(Callback)
+        --
+        table.insert(self.Connections, Connection)
+        --
+        return Connection
+    end
+    --
+    env.Resolve = Resolve
+    --
+    Library:Init()
+end
