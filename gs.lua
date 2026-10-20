@@ -33,6 +33,22 @@ do -- Folders
     end
 end
 --
+-- -> (cog) {the genuine settings gear, written out once so the menu can use it as a real asset}
+local Cog = nil
+do
+    local Path = "resolve/cog.png"
+    local Bytes = "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAMAAAC67d+PAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAE2MAABNjAWKDyE4AAAAASUVORK5CYII="
+    --
+    pcall(function()
+        if type(base64_decode) ~= "function" then return end
+        if type(writefile) ~= "function" or type(getcustomasset) ~= "function" then return end
+        --
+        writefile(Path, base64_decode(Bytes))
+        --
+        Cog = getcustomasset(Path)
+    end)
+end
+--
 do -- Library
     getgenv().Library = {
         Connections = {},
@@ -1803,9 +1819,8 @@ do -- Library
                     Keybind.State = Bool
                 end
                 --
-                -- never let the keybind enable a feature whose checkbox (master toggle) is off
-                if Keybind.State and Options.Toggle and Options.Toggle.GetState and not Options.Toggle:GetState() then
-                    Keybind.State = false
+                -- the master toggle stays in charge, the keybind only reports back to it
+                if Options.Toggle and Options.Toggle.GetState and not Options.Toggle:GetState() then
                     return
                 end
                 --
@@ -1815,10 +1830,6 @@ do -- Library
                     else
                         --Library:RemoveKeybindFrame(Options.Toggle:GetName(), Options.Toggle:GetSection())
                     end
-                end
-                --
-                if Options.Toggle.GetFlag then
-                    Library.Flags[Options.Toggle:GetFlag()] = Keybind
                 end
                 --
                 if Options.ChangeToggle then
@@ -1837,6 +1848,11 @@ do -- Library
                 local KeyString = Keybind.RegKeybind.EnumType == Enum.KeyCode and tostring(Keybind.RegKeybind):match("^Enum%.KeyCode%.(.+)$") or tostring(Keybind.RegKeybind):match("^Enum%.UserInputType%.(.+)$")
                 --
                 return KeyString
+            end
+            --
+            -- -> (state) {the hold the player is holding right now, always on / on hotkey / toggle}
+            function Keybind:GetState()
+                return Keybind.State
             end
             --
             function Keybind:Active()
@@ -2343,7 +2359,7 @@ do -- Library
             Parent = MultiBoxOutline_5
         })
         --
-        Library:CreateObject("TextLabel", {
+        local MultiBoxName = Library:CreateObject("TextLabel", {
             FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -2359,6 +2375,10 @@ do -- Library
             TextSize = Library.UI.FontSize,
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             Parent = PreviewMultiBox_5
+        })
+        --
+        Library:AddTheme(MultiBoxName, {
+            TextColor3 = "TextColor",
         })
         --
         Library:CreateObject("UIPadding", {
@@ -2859,7 +2879,7 @@ do -- Library
             Parent = DropdownOutline_5
         })
         --
-        Library:CreateObject("TextLabel", {
+        local DropdownName = Library:CreateObject("TextLabel", {
             FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -2875,6 +2895,10 @@ do -- Library
             TextSize = Library.UI.FontSize,
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             Parent = PreviewDropdown_5
+        })
+        --
+        Library:AddTheme(DropdownName, {
+            TextColor3 = "TextColor",
         })
         --
         Library:CreateObject("UIPadding", {
@@ -3335,6 +3359,10 @@ do -- Library
             Library:AddTheme(SliderName, {
                 TextColor3 = "Risky",
             })
+        else
+            Library:AddTheme(SliderName, {
+                TextColor3 = "TextColor",
+            })
         end
         --
         Library:CreateObject("UIPadding", {
@@ -3459,7 +3487,20 @@ do -- Library
             
             local Bounded = tonumber(Value) or 0
             --
-            local ValueText = Options.Disable[1] and ((Bounded <= Options.Disable[2] or Bounded >= Options.Disable[3]) and Options.Disable[1]) or tostring(GetValue(Value)) .. Options.Ending
+            local ValueText = tostring(GetValue(Value)) .. Options.Ending
+            --
+            -- -> (disable labels) {the low end and the high end can carry their own text, the high one wins when both land}
+            if Options.Disable[1] then
+                if Options.Disable[4] then
+                    if Bounded >= Options.Disable[3] then
+                        ValueText = Options.Disable[4]
+                    elseif Bounded <= Options.Disable[2] then
+                        ValueText = Options.Disable[1]
+                    end
+                elseif Bounded <= Options.Disable[2] or Bounded >= Options.Disable[3] then
+                    ValueText = Options.Disable[1]
+                end
+            end
             --
             SliderValue.Text = "<b>" .. ValueText .. "</b>"
             --
@@ -3723,6 +3764,10 @@ do -- Library
             Library:AddTheme(ToggleName, {
                 TextColor3 = "Risky",
             })
+        else
+            Library:AddTheme(ToggleName, {
+                TextColor3 = "TextColor",
+            })
         end
         --
         Library:CreateObject("UIPadding", {
@@ -3967,6 +4012,10 @@ do -- Library
             Parent = PreviewLabel
         })
         --
+        Library:AddTheme(LabelText, {
+            TextColor3 = "TextColor",
+        })
+        --
         Library:CreateObject("UIPadding", {
             PaddingLeft = UDim.new(0, 20),
             Parent = LabelText
@@ -4194,7 +4243,7 @@ do -- Library
             Parent = PreviewTextBox
         })
         --
-        Library:CreateObject("TextLabel", {
+        local TextBoxName = Library:CreateObject("TextLabel", {
             FontFace = Library.UI.NewFont,
             TextColor3 = Library.Theme.Default.TextColor,
             BorderColor3 = Color3.fromRGB(0, 0, 0),
@@ -4210,6 +4259,10 @@ do -- Library
             TextSize = Library.UI.FontSize,
             BackgroundColor3 = Color3.fromRGB(255, 255, 255),
             Parent = PreviewTextBox
+        })
+        --
+        Library:AddTheme(TextBoxName, {
+            TextColor3 = "TextColor",
         })
         --
         do -- Functions
@@ -4753,6 +4806,10 @@ do -- Library
             Library:AddTheme(Button_6, {
                 TextColor3 = "Risky",
             })
+        else
+            Library:AddTheme(Button_6, {
+                TextColor3 = "TextColor",
+            })
         end
         --
         Library:CreateObject("UIPadding", {
@@ -5094,6 +5151,212 @@ do -- Library
             Parent = Outline
         })
         --
+        -- -> (settings) {cog in the header, opens the panel on the right side}
+        local SettingsButton = nil
+        local SettingsPanel = nil
+        --
+        if Cog then
+            SettingsButton = Library:CreateObject("ImageButton", {
+                Name = "Settings",
+                Image = Cog,
+                ImageColor3 = Color3.fromRGB(130, 130, 130),
+                BackgroundTransparency = 1,
+                AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, -10, 0, 10),
+                Size = UDim2.new(0, 16, 0, 16),
+                BorderSizePixel = 0,
+                ZIndex = 20,
+                Parent = Outline
+            })
+            --
+            SettingsPanel = Library:CreateObject("Frame", {
+                Name = "SettingsPanel",
+                BackgroundColor3 = Color3.fromRGB(18, 18, 18),
+                BackgroundTransparency = 0,
+                BorderColor3 = Color3.fromRGB(0, 0, 0),
+                BorderSizePixel = 0,
+                AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, 0, 0, 34),
+                Size = UDim2.new(0, 190, 1, -34),
+                Visible = false,
+                ZIndex = 19,
+                Parent = Outline
+            })
+            --
+            local SettingsContent = Library:CreateObject("Frame", {
+                Name = "SettingsContent",
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -24, 1, -24),
+                Position = UDim2.new(0, 12, 0, 12),
+                BorderSizePixel = 0,
+                ZIndex = 20,
+                Parent = SettingsPanel
+            })
+            --
+            Library:CreateObject("UIListLayout", {
+                Padding = UDim.new(0, 10),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                HorizontalAlignment = Enum.HorizontalAlignment.Left,
+                Parent = SettingsContent
+            })
+            --
+            local function AddHeading(Text, Order)
+                Library:CreateObject("TextLabel", {
+                    Name = "Heading",
+                    Text = Text,
+                    TextColor3 = Color3.fromRGB(120, 120, 120),
+                    BackgroundTransparency = 1,
+                    FontFace = Library.UI.NewFont,
+                    TextSize = 11,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Size = UDim2.new(1, 0, 0, 14),
+                    LayoutOrder = Order,
+                    ZIndex = 21,
+                    Parent = SettingsContent
+                })
+            end
+            --
+            local function AddRow(Order)
+                local Row = Library:CreateObject("Frame", {
+                    Name = "Row",
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 26),
+                    LayoutOrder = Order,
+                    ZIndex = 21,
+                    Parent = SettingsContent
+                })
+                --
+                Library:CreateObject("UIListLayout", {
+                    Padding = UDim.new(0, 6),
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Parent = Row
+                })
+                --
+                return Row
+            end
+            --
+            local function AddSwatch(Row, Colour, Order, OnClick)
+                local Swatch = Library:CreateObject("TextButton", {
+                    Name = "Swatch",
+                    Text = "",
+                    BackgroundColor3 = Colour,
+                    BackgroundTransparency = 0,
+                    BorderColor3 = Color3.fromRGB(0, 0, 0),
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0, 26, 0, 26),
+                    LayoutOrder = Order,
+                    ZIndex = 22,
+                    Parent = Row
+                })
+                --
+                Library:Connection(Swatch.MouseButton1Click, function()
+                    OnClick(Colour)
+                end)
+            end
+            --
+            local Accents = {
+                Color3.fromRGB(153, 196, 39),
+                Color3.fromRGB(233, 44, 44),
+                Color3.fromRGB(86, 155, 255),
+                Color3.fromRGB(181, 255, 246),
+                Color3.fromRGB(200, 30, 175),
+            }
+            --
+            local Texts = {
+                Color3.fromRGB(205, 205, 205),
+                Color3.fromRGB(255, 255, 255),
+                Color3.fromRGB(140, 140, 140),
+                Color3.fromRGB(255, 120, 120),
+            }
+            --
+            AddHeading("ACCENT", 1)
+            --
+            local AccentRow = AddRow(2)
+            --
+            for Index, Colour in ipairs(Accents) do
+                AddSwatch(AccentRow, Colour, Index, function(Picked)
+                    Library:UpdateColor("Accent", Picked)
+                    --
+                    Library:UpdateColor("SecondAccent", Color3.fromRGB(
+                        math.max(math.floor(Picked.R * 255) - 29, 0),
+                        math.max(math.floor(Picked.G * 255) - 38, 0),
+                        math.max(math.floor(Picked.B * 255) - 7, 0)
+                    ))
+                end)
+            end
+            --
+            AddHeading("TEXT", 3)
+            --
+            local TextRow = AddRow(4)
+            --
+            for Index, Colour in ipairs(Texts) do
+                AddSwatch(TextRow, Colour, Index, function(Picked)
+                    Library:UpdateColor("TextColor", Picked)
+                end)
+            end
+            --
+            AddHeading("CLOSE KEY", 5)
+            --
+            local KeyRow = AddRow(6)
+            --
+            for Index, Key in ipairs({Enum.KeyCode.Insert, Enum.KeyCode.Delete, Enum.KeyCode.End, Enum.KeyCode.Backspace}) do
+                local KeyButton = Library:CreateObject("TextButton", {
+                    Name = "KeyButton",
+                    Text = Library.UI.Keys[Key] or Key.Name,
+                    TextColor3 = Color3.fromRGB(205, 205, 205),
+                    BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+                    BackgroundTransparency = 0,
+                    FontFace = Library.UI.NewFont,
+                    TextSize = 12,
+                    BorderColor3 = Color3.fromRGB(0, 0, 0),
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0, 34, 0, 26),
+                    LayoutOrder = Index,
+                    ZIndex = 22,
+                    Parent = KeyRow
+                })
+                --
+                Library:Connection(KeyButton.MouseButton1Click, function()
+                    Library.UI.CloseBind = Key
+                end)
+            end
+            --
+            AddHeading("MENU", 7)
+            --
+            local UnloadButton = Library:CreateObject("TextButton", {
+                Name = "Unload",
+                Text = "Unload",
+                TextColor3 = Color3.fromRGB(205, 205, 205),
+                BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+                BackgroundTransparency = 0,
+                FontFace = Library.UI.NewFont,
+                TextSize = 12,
+                BorderColor3 = Color3.fromRGB(0, 0, 0),
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 26),
+                LayoutOrder = 1,
+                ZIndex = 22,
+                Parent = SettingsContent
+            })
+            --
+            Library:Connection(UnloadButton.MouseButton1Click, function()
+                local Resolve = getgenv().Resolve
+                --
+                if Resolve and Resolve.Unload then
+                    pcall(Resolve.Unload)
+                    --
+                    return
+                end
+                --
+                pcall(Library.Unload)
+            end)
+            --
+            Library:Connection(SettingsButton.MouseButton1Click, function()
+                SettingsPanel.Visible = not SettingsPanel.Visible
+            end)
+        end
+        --
         do -- Functions
             function Window:SetTab(Number)
                 for Index, Tab in Window.Tabs do
@@ -5112,6 +5375,8 @@ do -- Library
             Library:Connection(UserInputService.InputBegan, function(Input)
                 if Input.KeyCode == Library.UI.CloseBind then
                     Window.Visible = not Window.Visible
+                    --
+                    if SettingsPanel then SettingsPanel.Visible = false end
                     --
                     Library:Fade(Window.Visible, Library.Objects, Outline, 0.2)
                 end
